@@ -17,3 +17,5 @@ gateway/certs/*
 !gateway/certs/.gitkeep
 
 .DS_Store
+
+docker-compose.dev.yml
