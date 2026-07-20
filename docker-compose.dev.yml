@@ -45,11 +45,14 @@ services:
       - chatapp-net
 
   frontend:
-    container_name: chatapp-frontend
+    container_name: chatapp-frontend-dev
     build:
       context: ./frontend
-      target: prod
+      target: dev
     restart: unless-stopped
+    volumes:
+      - ./frontend/app:/app
+      - /app/node_modules
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ || exit 1"]
       interval: 10s
@@ -85,7 +88,6 @@ services:
 
 volumes:
   db-data:
-    name: chatapp-db-data
 
 networks:
   chatapp-net:

@@ -340,7 +340,7 @@ function AuthPage( { onLogin } ) {
   return (
     <Container>
       <Card>
-        <Logo>WHATEVER</Logo>
+        <Logo>CHATAPP</Logo>
         <Title>
           {view === "login"
             ? "Welcome Back"

@@ -1,7 +1,7 @@
 FROM nginx:1.27
 
 RUN apt-get update \
-    && apt-get install openssl -y \
+    && apt-get install openssl curl -y \
     && apt-get clean
 
 RUN rm /etc/nginx/conf.d/default.conf
