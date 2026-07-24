@@ -18,4 +18,5 @@ gateway/certs/*
 
 .DS_Store
 
+# notes
 # docker-compose.dev.yml

@@ -145,8 +145,8 @@ function LoginView({ setView, onLogin, values, onChange, error, loading }) {
 
       <Form onSubmit={handleLogin}>
         <Input
-          type="email"
-          placeholder="Email"
+          type="text"
+          placeholder="Email or username"
           required
           value={values.email}
           onChange={(e) => onChange("email", e.target.value)}
@@ -199,8 +199,8 @@ function SignupView({ setView, onSignup, values, onChange, error, loading }) {
           onChange={(e) => onChange("username", e.target.value)}
         />
         <Input
-          type="email"
-          placeholder="Email"
+          type="text"
+          placeholder="Email or username"
           required
           value={values.email}
           onChange={(e) => onChange("email", e.target.value)}

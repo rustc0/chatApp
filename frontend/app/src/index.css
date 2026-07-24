@@ -3,11 +3,11 @@
 }
 
 :root {
-  --color-bg: #1b1b1f;
+  --color-bg: #161819;
   --color-surface-hover: #26262d;
   --color-text: #b1b1b1;
   --color-text-muted: #d4d4d4;
-  --color-accent: #db3848;
+  --color-accent: #a31d2a;
   --color-online: #259158;
 }
 
