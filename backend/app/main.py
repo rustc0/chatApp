@@ -11,7 +11,6 @@ from app.modules.main_router import router as main_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.db_pool = await identity_service.init_pool()
-    await identity_service.ensure_schema(app.state.db_pool)
     try:
         yield
     finally:

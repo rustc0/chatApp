@@ -68,8 +68,8 @@ async def close_pool(pool: asyncpg.Pool | None) -> None:
 		await pool.close()
 
 
-async def ensure_schema(pool: asyncpg.Pool) -> None:
-	await pool.execute(SCHEMA_SQL)
+# async def ensure_schema(pool: asyncpg.Pool) -> None:
+# 	await pool.execute(SCHEMA_SQL)
 
 
 def _normalize_username(username: str) -> str:
