@@ -4,17 +4,16 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.modules.identity import service as identity_service
+from app.database import engine
 from app.modules.main_router import router as main_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.db_pool = await identity_service.init_pool()
     try:
         yield
     finally:
-        await identity_service.close_pool(app.state.db_pool)
+        await engine.dispose()
 
 
 app = FastAPI(lifespan=lifespan)
