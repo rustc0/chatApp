@@ -25,6 +25,8 @@ async def http_exception_handler(_: Request, exc: HTTPException):
     content = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
     if "message" not in content:
         content = {"message": str(exc.detail)}
+    if exc.status_code >= 500:
+        content = {"message": "Something went wrong. Please try again later."}
     return JSONResponse(status_code=exc.status_code, content=content)
 
 

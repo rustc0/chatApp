@@ -281,7 +281,11 @@ function AuthPage( { onLogin } ) {
       await loginUser(email, password);
       onLogin();
     } catch (err) {
-      setError(err.message);
+		if (err?.response?.status >= 500) {
+			setError("Something went wrong. Please try again later.");
+		} else {
+			setError(err.message);
+		}
       throw err;
     } finally {
       setLoading(false);
@@ -301,7 +305,11 @@ function AuthPage( { onLogin } ) {
       await registerUser(username, email, password);
       onLogin();
     } catch (err) {
-      setError(err.message);
+      if (err?.response?.status >= 500) {
+        setError("Something went wrong. Please try again later.");
+      } else {
+        setError(err.message);
+      }
       throw err;
     } finally {
       setLoading(false);

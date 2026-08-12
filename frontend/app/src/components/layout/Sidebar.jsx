@@ -323,14 +323,11 @@ function ProfilePreview({ onLogout }) {
 
   useEffect(() => {
     async function fetchUser() {
-      const token = localStorage.getItem("token");
-      if (token) {
-        try {
-          const userData = await getMe(token);
-          setUser(userData);
-        } catch (error) {
-          console.error("Error fetching user data:", error);
-        }
+      try {
+        const userData = await getMe();
+        setUser(userData);
+      } catch (error) {
+        console.error("Error fetching user data:", error);
       }
     }
     fetchUser();

@@ -1,21 +1,28 @@
 from __future__ import annotations
 
-import hashlib
 import asyncio
-from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHashError
+import base64
+import hashlib
+import hmac
+import json
 import os
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from fastapi import HTTPException
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+from fastapi import HTTPException, Response
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.identity import Session, User
 
+ACCESS_TOKEN_TTL_SECONDS = 5 * 60
 SESSION_TTL_DAYS = int(os.getenv("SESSION_TTL_DAYS", "7"))
+ACCESS_TOKEN_COOKIE_NAME = "access_token"
+REFRESH_TOKEN_COOKIE_NAME = "refresh_token"
+REFRESH_TOKEN_COOKIE_PATH = "/api/users/refresh"
 
 
 def _normalize_username(username: str) -> str:
@@ -38,11 +45,101 @@ def _serialize_user(user: User) -> dict[str, object]:
 		"updatedAt": user.updated_at,
 	}
 
+
+def _require_jwt_secret() -> str:
+	secret = os.getenv("JWT_SECRET")
+	if not secret:
+		raise HTTPException(status_code=500, detail={"message": "JWT secret is not configured"})
+	return secret
+
+
+def _base64url_encode(data: bytes) -> str:
+	return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _base64url_decode(data: str) -> bytes:
+	padding = "=" * (-len(data) % 4)
+	return base64.urlsafe_b64decode(data + padding)
+
+
+def _encode_access_token(user_id: int) -> str:
+	now = datetime.now(UTC)
+	payload = {
+		"user_id": user_id,
+		"exp": int((now + timedelta(seconds=ACCESS_TOKEN_TTL_SECONDS)).timestamp()),
+	}
+	header = {"alg": "HS256", "typ": "JWT"}
+	encoded_header = _base64url_encode(json.dumps(header, separators=(",", ":")).encode("utf-8"))
+	encoded_payload = _base64url_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+	signing_input = f"{encoded_header}.{encoded_payload}".encode("ascii")
+	signature = hmac.new(
+		_require_jwt_secret().encode("utf-8"),
+		signing_input,
+		hashlib.sha256,
+	).digest()
+	return f"{encoded_header}.{encoded_payload}.{_base64url_encode(signature)}"
+
+
+def _decode_access_token(token: str) -> dict[str, object]:
+	try:
+		header_segment, payload_segment, signature_segment = token.split(".")
+		header = json.loads(_base64url_decode(header_segment))
+		if header.get("alg") != "HS256":
+			raise ValueError("Unsupported JWT algorithm")
+
+		signing_input = f"{header_segment}.{payload_segment}".encode("ascii")
+		expected_signature = hmac.new(
+			_require_jwt_secret().encode("utf-8"),
+			signing_input,
+			hashlib.sha256,
+		).digest()
+		provided_signature = _base64url_decode(signature_segment)
+		if not hmac.compare_digest(expected_signature, provided_signature):
+			raise ValueError("Invalid JWT signature")
+
+		payload = json.loads(_base64url_decode(payload_segment))
+		expiry = payload.get("exp")
+		user_id = payload.get("user_id")
+		if not isinstance(expiry, (int, float)) or not isinstance(user_id, int):
+			raise ValueError("Invalid JWT payload")
+		if expiry <= datetime.now(UTC).timestamp():
+			raise ValueError("Expired JWT")
+		return {"user_id": user_id, "exp": int(expiry)}
+	except (ValueError, json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+		raise HTTPException(status_code=401, detail={"message": "Invalid or expired access token"}) from exc
+
+
+def _set_auth_cookies(response: Response, access_token: str, refresh_token: str | None = None) -> None:
+	response.set_cookie(
+		key=ACCESS_TOKEN_COOKIE_NAME,
+		value=access_token,
+		httponly=True,
+		secure=True,
+		samesite="lax",
+		path="/",
+		max_age=ACCESS_TOKEN_TTL_SECONDS,
+	)
+	if refresh_token is not None:
+		response.set_cookie(
+			key=REFRESH_TOKEN_COOKIE_NAME,
+			value=refresh_token,
+			httponly=True,
+			secure=True,
+			samesite="lax",
+			path=REFRESH_TOKEN_COOKIE_PATH,
+			max_age=SESSION_TTL_DAYS * 24 * 60 * 60,
+		)
+
+
+def _clear_auth_cookies(response: Response) -> None:
+	response.delete_cookie(key=ACCESS_TOKEN_COOKIE_NAME, path="/")
+	response.delete_cookie(key=REFRESH_TOKEN_COOKIE_NAME, path=REFRESH_TOKEN_COOKIE_PATH)
+
 # Initialize the hasher with standard OWASP-recommended parameters
 # - time_cost=3 (iterations)
 # - memory_cost=65536 (64 MB)
 # - parallelism=4 (threads)
-		
+
 ph = PasswordHasher(
     time_cost=3,
     memory_cost=65536,
@@ -84,15 +181,29 @@ async def _get_user_by_identifier(session: AsyncSession, identifier: str) -> Use
 	lowered_identifier = identifier.strip().lower()
 	statement = sa.select(User).where(
 		sa.or_(
-			sa.func.lower(User.username) == lowered_identifier,
-			sa.func.lower(User.email) == lowered_identifier,
+			User.username == lowered_identifier,
+			User.email == lowered_identifier,
 		)
 	)
 	result = await session.execute(statement.limit(1))
 	return result.scalar_one_or_none()
 
 
-async def register_user(session: AsyncSession, username: str, email: str, password: str) -> dict[str, object]:
+async def _get_user_by_id(session: AsyncSession, user_id: int) -> User:
+	result = await session.execute(sa.select(User).where(User.id == user_id).limit(1))
+	user = result.scalar_one_or_none()
+	if user is None:
+		raise HTTPException(status_code=401, detail={"message": "Invalid or expired access token"})
+	return user
+
+
+async def register_user(
+	session: AsyncSession,
+	response: Response,
+	username: str,
+	email: str,
+	password: str,
+) -> dict[str, object]:
 	normalized_username = _normalize_username(username)
 	normalized_email = _normalize_email(email)
 
@@ -106,8 +217,8 @@ async def register_user(session: AsyncSession, username: str, email: str, passwo
 	existing = await session.execute(
 		sa.select(User.id).where(
 			sa.or_(
-				sa.func.lower(User.username) == normalized_username,
-				sa.func.lower(User.email) == normalized_email,
+				User.username == normalized_username,
+				User.email == normalized_email,
 			),
 		).limit(1)
 	)
@@ -127,13 +238,18 @@ async def register_user(session: AsyncSession, username: str, email: str, passwo
 		raise HTTPException(status_code=409, detail={"message": "Username or email already exists"}) from exc
 
 	await session.refresh(user)
-	access_token = await _create_session(session, user.id)
-	payload = _serialize_user(user)
-	payload["accessToken"] = access_token
-	return payload
+	refresh_token = await _create_session(session, user.id)
+	access_token = _encode_access_token(user.id)
+	_set_auth_cookies(response, access_token, refresh_token)
+	return _serialize_user(user)
 
 
-async def login_user(session: AsyncSession, identifier: str, password: str) -> dict[str, object]:
+async def login_user(
+	session: AsyncSession,
+	response: Response,
+	identifier: str,
+	password: str,
+) -> dict[str, object]:
 	lookup = identifier.strip()
 	if not lookup:
 		raise HTTPException(status_code=400, detail={"message": "Email or username is required"})
@@ -142,33 +258,55 @@ async def login_user(session: AsyncSession, identifier: str, password: str) -> d
 	if user is None or not await _verify_password(password, user.password_hash):
 		raise HTTPException(status_code=401, detail={"message": "Invalid credentials"})
 
-	access_token = await _create_session(session, user.id)
-	payload = _serialize_user(user)
-	payload["accessToken"] = access_token
-	return payload
+	refresh_token = await _create_session(session, user.id)
+	access_token = _encode_access_token(user.id)
+	_set_auth_cookies(response, access_token, refresh_token)
+	return _serialize_user(user)
+
+
+async def refresh_access_token(session: AsyncSession, response: Response, refresh_token: str | None) -> None:
+	if not refresh_token:
+		raise HTTPException(status_code=401, detail={"message": "Missing refresh token"})
+
+	token_hash = _hash_token(refresh_token)
+	result = await session.execute(
+		sa.select(Session).where(Session.token_hash == token_hash).limit(1)
+	)
+	session_obj = result.scalar_one_or_none()
+	if session_obj is None:
+		raise HTTPException(status_code=401, detail={"message": "Invalid or expired refresh token"})
+
+	if session_obj.expires_at <= datetime.now(UTC):
+		await session.delete(session_obj)
+		await session.commit()
+		raise HTTPException(status_code=401, detail={"message": "Invalid or expired refresh token"})
+
+	session_obj.last_used_at = datetime.now(UTC)
+	await session.commit()
+	access_token = _encode_access_token(session_obj.user_id)
+	_set_auth_cookies(response, access_token)
+
+
+async def logout_user(session: AsyncSession, response: Response, refresh_token: str | None) -> None:
+	if refresh_token:
+		token_hash = _hash_token(refresh_token)
+		result = await session.execute(
+			sa.select(Session).where(Session.token_hash == token_hash).limit(1)
+		)
+		session_obj = result.scalar_one_or_none()
+		if session_obj is not None:
+			await session.delete(session_obj)
+			await session.commit()
+	_clear_auth_cookies(response)
 
 
 async def get_current_user(session: AsyncSession, token: str) -> dict[str, object]:
 	if not token:
 		raise HTTPException(status_code=401, detail={"message": "Missing access token"})
 
-	token_hash = _hash_token(token)
-	result = await session.execute(
-		sa.select(Session, User)
-		.join(User, User.id == Session.user_id)
-		.where(Session.token_hash == token_hash)
-		.limit(1)
-	)
-	row = result.first()
-	if row is None:
-		raise HTTPException(status_code=401, detail={"message": "Invalid or expired access token"})
+	return _decode_access_token(token)
 
-	session_obj, user = row
-	if session_obj.expires_at <= datetime.now(UTC):
-		await session.delete(session_obj)
-		await session.commit()
-		raise HTTPException(status_code=401, detail={"message": "Invalid or expired access token"})
 
-	session_obj.last_used_at = datetime.now(UTC)
-	await session.commit()
+async def get_user_profile(session: AsyncSession, user_id: int) -> dict[str, object]:
+	user = await _get_user_by_id(session, user_id)
 	return _serialize_user(user)

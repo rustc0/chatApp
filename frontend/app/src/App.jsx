@@ -1,18 +1,51 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AppShell from "./components/layout/AppShell.jsx";
 import AuthPage from "./components/layout/AuthPage.jsx";
+import { getMe, logoutUser } from "./api/authentication.js";
 
 function App() {
-  const [isAuth, setisAuth] = useState(() => Boolean(localStorage.getItem("token")));
+  const [isAuth, setIsAuth] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function initializeAuth() {
+      try {
+        await getMe();
+        if (active) {
+          setIsAuth(true);
+        }
+      } catch {
+        if (active) {
+          setIsAuth(false);
+        }
+      }
+    }
+
+    initializeAuth();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const logIn = () => {
-    setisAuth(Boolean(localStorage.getItem("token")));
+    setIsAuth(true);
   };
 
-  const logOut = () => {
-    localStorage.removeItem("token");
-    setisAuth(false);
+  const logOut = async () => {
+    try {
+      await logoutUser();
+    } catch (error) {
+      console.error("Failed to log out cleanly:", error);
+    } finally {
+      setIsAuth(false);
+    }
+  }
+
+  if (isAuth === null) {
+    return null;
   }
 
   return (
