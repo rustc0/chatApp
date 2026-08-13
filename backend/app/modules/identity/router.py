@@ -37,7 +37,7 @@ async def login_user(
 	return await service.login_user(response=response, session=session, identifier=payload.identifier, password=payload.password)
 
 
-@router.post("/refresh")
+@router.post("/auth/refresh")
 async def refresh_access_token(
 	response: Response,
 	refresh_token: str | None = Cookie(default=None),
@@ -47,7 +47,7 @@ async def refresh_access_token(
 	return {"message": "Access token refreshed"}
 
 
-@router.post("/logout")
+@router.post("/auth/logout")
 async def logout_user(
 	response: Response,
 	refresh_token: str | None = Cookie(default=None),

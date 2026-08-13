@@ -31,7 +31,7 @@ async function requestJson(url, init = {}) {
 
 async function refreshAccessToken() {
 	if (!refreshPromise) {
-		refreshPromise = fetch(`${API_URL}/refresh`, {
+		refreshPromise = fetch(`${API_URL}/auth/refresh`, {
 			method: "POST",
 			credentials: "include",
 			headers: {
@@ -103,7 +103,7 @@ export async function loginUser(identifier, password) {
 }
 
 export async function logoutUser() {
-	return requestJson(`${API_URL}/logout`, {
+	return requestJson(`${API_URL}/auth/logout`, {
 		method: "POST",
 	});
 }

@@ -22,7 +22,7 @@ ACCESS_TOKEN_TTL_SECONDS = 5 * 60
 SESSION_TTL_DAYS = int(os.getenv("SESSION_TTL_DAYS", "7"))
 ACCESS_TOKEN_COOKIE_NAME = "access_token"
 REFRESH_TOKEN_COOKIE_NAME = "refresh_token"
-REFRESH_TOKEN_COOKIE_PATH = "/api/users/refresh"
+REFRESH_TOKEN_COOKIE_PATH = "/api/users/auth"
 
 
 def _normalize_username(username: str) -> str:
@@ -297,6 +297,8 @@ async def logout_user(session: AsyncSession, response: Response, refresh_token: 
 		if session_obj is not None:
 			await session.delete(session_obj)
 			await session.commit()
+	else:
+		print("# DEBUG: No refresh token provided for logout; skipping session deletion.")
 	_clear_auth_cookies(response)
 
 
