@@ -62,6 +62,37 @@ class User(Base):
 		cascade="all, delete-orphan",
 	)
 
+class Friendship(Base):
+	__tablename__ = "friendships"
+
+	id: Mapped[int] = mapped_column(
+		sa.BigInteger,
+		primary_key=True,
+		autoincrement=True,
+	)
+
+	sender_id: Mapped[int] = mapped_column(
+		sa.ForeignKey("users.id"),
+		nullable=False,
+	)
+
+	receiver_id: Mapped[int] = mapped_column(
+		sa.ForeignKey("users.id"),
+		nullable=False,
+	)
+
+	status: Mapped[str] = mapped_column(
+		sa.String(32),
+		nullable=False,
+		server_default=sa.text("'pending'"),
+	)
+
+	created_at: Mapped[datetime] = mapped_column(
+		sa.DateTime(timezone=True),
+		server_default=sa.text("now()"),
+		nullable=False,
+	)
+
 
 class Session(Base):
 	__tablename__ = "sessions"
