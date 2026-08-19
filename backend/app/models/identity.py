@@ -93,6 +93,11 @@ class Friendship(Base):
 		nullable=False,
 	)
 
+	__table_args__ = (
+		Index("ix_friendships_sender_status", "sender_id", "status", unique=True),
+		Index("ix_friendships_receiver_status", "receiver_id", "status", unique=True),
+	)
+
 
 class Session(Base):
 	__tablename__ = "sessions"
