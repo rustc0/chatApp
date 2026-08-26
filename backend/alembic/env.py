@@ -9,6 +9,7 @@ from sqlalchemy import pool
 from alembic import context
 
 from app.models.base import Base
+from app.models.rooms import Room, RoomMember, Message
 import app.models.identity  # noqa: F401
 
 load_dotenv()  # Load environment variables from .env file

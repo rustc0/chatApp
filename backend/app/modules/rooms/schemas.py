@@ -1,10 +1,8 @@
-# rooms/schemas.py
-
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from app.rooms.models import RoomType, RoomRole
+from app.models.rooms import RoomType, RoomRole
 
 
 class RoomCreate(BaseModel):

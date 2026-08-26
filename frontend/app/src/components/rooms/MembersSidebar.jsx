@@ -1,5 +1,5 @@
 import MemberList from "./MemberList";
-import { getRoomMembers } from "../../api/roomMembers";
+import { getRoomMembers } from "../../api/rooms";
 import { useEffect, useState } from "react";
 import styled from "styled-components";
 

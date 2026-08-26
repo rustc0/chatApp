@@ -1,4 +1,4 @@
-from Enum import Enum
+from enum import Enum
 from datetime import datetime
 
 from sqlalchemy import ForeignKey, Text, Index

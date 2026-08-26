@@ -11,12 +11,13 @@ from datetime import UTC, datetime, timedelta
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
-from fastapi import HTTPException, Response
+from fastapi import Cookie, Depends, HTTPException, Response
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.identity import Session, User
+from app.database import get_db_session
 
 ACCESS_TOKEN_TTL_SECONDS = 5 * 60
 SESSION_TTL_DAYS = int(os.getenv("SESSION_TTL_DAYS", "7"))
@@ -141,9 +142,9 @@ def _clear_auth_cookies(response: Response) -> None:
 # - parallelism=4 (threads)
 
 ph = PasswordHasher(
-    time_cost=3,
-    memory_cost=65536,
-    parallelism=4,
+	time_cost=3,
+	memory_cost=65536,
+	parallelism=4,
 )
 
 
@@ -302,11 +303,13 @@ async def logout_user(session: AsyncSession, response: Response, refresh_token: 
 	_clear_auth_cookies(response)
 
 
-async def get_current_user(session: AsyncSession, token: str) -> dict[str, object]:
-	if not token:
+async def get_current_user(
+	session: AsyncSession = Depends(get_db_session),
+	access_token: str | None = Cookie(default=None),
+) -> dict[str, object]:
+	if access_token is None:
 		raise HTTPException(status_code=401, detail={"message": "Missing access token"})
-
-	return _decode_access_token(token)
+	return _decode_access_token(access_token)
 
 
 async def get_user_profile(session: AsyncSession, user_id: int) -> dict[str, object]:

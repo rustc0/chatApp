@@ -59,11 +59,7 @@ async def logout_user(
 
 @router.get("/me")
 async def get_me(
-	access_token: str | None = Cookie(default=None),
+	current_user: dict[str, object] = Depends(service.get_current_user),
 	session=Depends(get_db_session),
 ):
-	if access_token is None:
-		raise HTTPException(status_code=401, detail={"message": "Missing access token"})
-
-	current_user = await service.get_current_user(session, access_token)
 	return await service.get_user_profile(session, int(current_user["user_id"]))

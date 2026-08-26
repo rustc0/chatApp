@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.modules.identity.service import get_current_user
 from app.database import get_db_session
+from app.modules.rooms import service
 from app.modules.rooms.service import (
-    service,
     RoomNotFoundError,
     RoomForbiddenError,
     RoomMemberNotFoundError,
@@ -32,7 +32,7 @@ async def list_rooms(
 ):
     rooms = await service.list_user_rooms(
         session=session,
-        user_id=current_user["id"],
+        user_id=current_user["user_id"],
     )
     return [RoomOut.model_validate(room) for room in rooms]
 
@@ -45,7 +45,7 @@ async def create_room(
 ):
     room = await service.create_room(
         session=session,
-        user_id=current_user["id"],
+        user_id=current_user["user_id"],
         name=payload.name,
     )
     return RoomOut.model_validate(room)
@@ -60,7 +60,7 @@ async def get_or_create_dm(
     try:
         room = await service.get_or_create_dm(
             session=session,
-            user_id=current_user["id"],
+            user_id=current_user["user_id"],
             other_user_id=payload.user_id,
         )
     except UserNotFoundError:
@@ -77,7 +77,7 @@ async def get_room(
     try:
         room = await service.get_room_details(
             session=session,
-            user_id=current_user["id"],
+            user_id=current_user["user_id"],
             room_id=room_id,
         )
     except RoomNotFoundError:
@@ -97,7 +97,7 @@ async def update_room(
     try:
         room = await service.update_room(
             session=session,
-            user_id=current_user["id"],
+            user_id=current_user["user_id"],
             room_id=room_id,
             payload=payload,
         )
@@ -117,7 +117,7 @@ async def delete_room(
     try:
         await service.delete_room(
             session=session,
-            user_id=current_user["id"],
+            user_id=current_user["user_id"],
             room_id=room_id,
         )
     except RoomNotFoundError:
@@ -135,7 +135,7 @@ async def list_members(
     try:
         members = await service.list_room_members(
             session=session,
-            user_id=current_user["id"],
+            user_id=current_user["user_id"],
             room_id=room_id,
         )
     except RoomNotFoundError:
@@ -155,7 +155,7 @@ async def add_member(
     try:
         member = await service.add_member(
             session=session,
-            user_id=current_user["id"],
+            user_id=current_user["user_id"],
             room_id=room_id,
             new_member_id=payload.user_id,
         )
@@ -180,7 +180,7 @@ async def remove_member(
     try:
         await service.remove_member(
             session=session,
-            user_id=current_user["id"],
+            user_id=current_user["user_id"],
             room_id=room_id,
             target_user_id=user_id,
         )
@@ -203,7 +203,7 @@ async def assign_role(
     try:
         member = await service.assign_role(
             session=session,
-            user_id=current_user["id"],
+            user_id=current_user["user_id"],
             room_id=room_id,
             target_user_id=user_id,
             role=payload.role,

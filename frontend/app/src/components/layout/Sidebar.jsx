@@ -3,7 +3,8 @@ import styled from "styled-components";
 import { HiArrowLeftStartOnRectangle } from "react-icons/hi2";
 import { IoMdAdd } from "react-icons/io";
 import { useProfileOverlay } from "./ProfileOverlayContext";
-import { getRooms } from "../../api/rooms";
+import { getRooms, createRoom } from "../../api/rooms";
+import CreateRoomInput from "./CreateRoomInput";
 import { getMe } from "../../api/authentication.js";
 
 const SidebarRoot = styled.aside`
@@ -215,6 +216,7 @@ function Sidebar({
 }) {
   const [rooms, setRooms] = useState([]);
   const [loaded, setLoaded] = useState("loading");
+  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     async function loadRooms() {
@@ -230,6 +232,18 @@ function Sidebar({
 
     loadRooms();
   }, []);
+
+  async function handleCreateRoom(name) {
+    try {
+      const newRoom = await createRoom(name);
+      setRooms((prev) => [newRoom, ...prev]);
+      setCreateOpen(false);
+      if (onRoomChange) onRoomChange(newRoom);
+    } catch (err) {
+      console.error("Failed to create room:", err);
+      window.alert(err?.message || "Failed to create room");
+    }
+  }
 
   return (
     <SidebarRoot>
@@ -247,6 +261,10 @@ function Sidebar({
         activeRoomId={activeRoomId}
         onRoomChange={onRoomChange}
         state={loaded}
+        onCreate={() => setCreateOpen((s) => !s)}
+        createOpen={createOpen}
+        onSubmitCreate={handleCreateRoom}
+        onCancelCreate={() => setCreateOpen(false)}
       />
 
       <ProfilePreview onLogout={onLogout} />
@@ -262,13 +280,32 @@ function SidebarHeader() {
   );
 }
 
-function RoomsSection({ rooms, isDirectMessages, activeRoomId, onRoomChange, state }) {
+function RoomsSection({
+  rooms, isDirectMessages, activeRoomId, onRoomChange, state,
+  onCreate, createOpen, onSubmitCreate, onCancelCreate,
+}) {
   return (
     <SidebarSection>
-      <SectionTitle title="Rooms" actionLabel="Create room" />
+      <SectionTitle
+        title="Rooms"
+        actionLabel="Create room"
+        onCreate={onCreate}
+      />
 
-      {state === "loading" && <StatusMessage>Loading rooms...</StatusMessage>}
-      {state === "error" && <StatusMessage>Error loading rooms.</StatusMessage>}
+      {createOpen && (
+        <CreateRoomInput
+          onCreate={onSubmitCreate}
+          onCancel={onCancelCreate}
+        />
+      )}
+
+      {state === "loading" && (
+        <StatusMessage>Loading rooms...</StatusMessage>
+      )}
+
+      {state === "error" && (
+        <StatusMessage>Error loading rooms.</StatusMessage>
+      )}
 
       <RoomListNav aria-label="Rooms">
         {rooms.map((room) => (
@@ -284,11 +321,11 @@ function RoomsSection({ rooms, isDirectMessages, activeRoomId, onRoomChange, sta
   );
 }
 
-function SectionTitle({ title, actionLabel }) {
+function SectionTitle({ title, actionLabel, onCreate }) {
   return (
     <SectionTitleRow>
       <span>{title}</span>
-      <SectionActionButton type="button" aria-label={actionLabel}>
+      <SectionActionButton type="button" aria-label={actionLabel} onClick={onCreate}>
         <IoMdAdd />
       </SectionActionButton>
     </SectionTitleRow>

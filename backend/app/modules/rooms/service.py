@@ -1,5 +1,6 @@
 from sqlalchemy import select, func
 from sqlalchemy.orm import aliased
+from fastapi import HTTPException, status
 
 from app.models.identity import User
 from app.models.rooms import Room, RoomMember, RoomType, RoomRole
@@ -18,6 +19,10 @@ class RoomMemberNotFoundError(Exception):
 
 
 class RoomMemberConflictError(Exception):
+    pass
+
+
+class UserNotFoundError(Exception):
     pass
 
 async def _get_room_or_404(session, room_id: int) -> Room:
@@ -62,7 +67,7 @@ async def get_or_create_dm(session, user_id: int, other_user_id: int) -> Room:
 
     other_user = await session.get(User, other_user_id)
     if other_user is None:
-        raise HTTPException(status_code=404, detail={"message": "User not found"})
+        raise UserNotFoundError()
 
     rm1 = aliased(RoomMember)
     rm2 = aliased(RoomMember)
@@ -153,7 +158,7 @@ async def add_member(session, user_id: int, room_id: int, new_member_id: int) ->
 
     new_user = await session.get(User, new_member_id)
     if new_user is None:
-        raise HTTPException(status_code=404, detail={"message": "User not found"})
+        raise UserNotFoundError()
 
     existing = await session.get(RoomMember, (room_id, new_member_id))
     if existing is not None:

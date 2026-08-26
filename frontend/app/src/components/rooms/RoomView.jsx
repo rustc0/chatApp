@@ -4,7 +4,7 @@ import RoomHeader from "./RoomHeader";
 import RoomContent from "./RoomContent";
 import MessageComposer from "./MessageComposer";
 import MembersSidebar from "./MembersSidebar";
-import { getRoomChat } from "../../api/roomChat";
+import { getRoom } from "../../api/rooms";
 
 const RoomViewShell = styled.section`
   display: flex;
@@ -27,22 +27,20 @@ function RoomView({ roomId, roomName }) {
 
   useEffect(() => {
     let isCanceled = false;
-
-    async function loadRoomChat() {
+    async function loadRoom() {
       setIsLoading("loading");
       try {
-        const data = await getRoomChat(roomId);
+        await getRoom(roomId);
         if (!isCanceled) {
-          setRoomChat(data);
+          setRoomChat([]);
           setIsLoading("success");
         }
       } catch (error) {
-        if (!isCanceled)
-          setIsLoading("error");
+        if (!isCanceled) setIsLoading("error");
       }
     }
 
-    loadRoomChat();
+    loadRoom();
     return () => {
       isCanceled = true;
     };
