@@ -372,7 +372,6 @@ function ProfilePreview({ onLogout }) {
 
   function openPrfl() {
     openProfile(user);
-    console.log("shoudl be opened!");
   }
   return (
     <ProfilePreviewBox>

@@ -15,9 +15,18 @@ from fastapi import Cookie, Depends, HTTPException, Response
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.models.identity import Session, User
 from app.database import get_db_session
+
+
+class UsernameTakenError(Exception):
+	pass
+
+
+class UserNotFoundError(Exception):
+	pass
 
 ACCESS_TOKEN_TTL_SECONDS = 5 * 60
 SESSION_TTL_DAYS = int(os.getenv("SESSION_TTL_DAYS", "7"))
@@ -315,3 +324,36 @@ async def get_current_user(
 async def get_user_profile(session: AsyncSession, user_id: int) -> dict[str, object]:
 	user = await _get_user_by_id(session, user_id)
 	return _serialize_user(user)
+
+
+async def is_username_available(*, session, username: str) -> bool:
+	result = await session.execute(select(User).where(User.username == username))
+	return result.scalar_one_or_none() is None
+
+
+async def update_user_profile(
+    *,
+    session,
+    user_id: int,
+    display_name: str | None,
+    username: str | None,
+    bio: str | None,
+) -> User:
+	user = await session.get(User, user_id)
+	if user is None:
+		raise UserNotFoundError()
+
+	if username is not None and username != user.username:
+		if not await is_username_available(session=session, username=username):
+			raise UsernameTakenError()
+		user.username = username
+
+	if display_name is not None:
+		user.display_name = display_name
+
+	if bio is not None:
+		user.bio = bio
+
+	await session.commit()
+	await session.refresh(user)
+	return user

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
-from app.modules.identity import service
+from app.modules.identity import service as identity_service
 from app.database import get_db_session
 
 
@@ -16,6 +16,28 @@ class LoginRequest(BaseModel):
 	password: str = Field(min_length=1, max_length=128)
 
 
+class UsernameAvailabilityResponse(BaseModel):
+	available: bool
+
+
+class UserProfileUpdateRequest(BaseModel):
+	display_name: str | None = Field(default=None, min_length=1, max_length=50)
+	username: str | None = Field(default=None, min_length=3, max_length=20, pattern=r"^[a-zA-Z0-9_]+$")
+	bio: str | None = Field(default=None, max_length=280)
+
+
+class UserProfileResponse(BaseModel):
+	id: int
+	display_name: str
+	username: str | None
+	bio: str | None
+
+	class Config:
+		from_attributes = True
+
+# should move the schemas to a separate file later
+
+
 router = APIRouter(prefix="/users", tags=["Identity"])
 
 
@@ -25,7 +47,7 @@ async def register_user(
 	response: Response,
 	session=Depends(get_db_session),
 ):
-	return await service.register_user(response=response, session=session, username=payload.username, email=payload.email, password=payload.password)
+	return await identity_service.register_user(response=response, session=session, username=payload.username, email=payload.email, password=payload.password)
 
 
 @router.post("/login")
@@ -34,7 +56,7 @@ async def login_user(
 	response: Response,
 	session=Depends(get_db_session),
 ):
-	return await service.login_user(response=response, session=session, identifier=payload.identifier, password=payload.password)
+	return await identity_service.login_user(response=response, session=session, identifier=payload.identifier, password=payload.password)
 
 
 @router.post("/auth/refresh")
@@ -43,7 +65,7 @@ async def refresh_access_token(
 	refresh_token: str | None = Cookie(default=None),
 	session=Depends(get_db_session),
 ):
-	await service.refresh_access_token(session=session, response=response, refresh_token=refresh_token)
+	await identity_service.refresh_access_token(session=session, response=response, refresh_token=refresh_token)
 	return {"message": "Access token refreshed"}
 
 
@@ -53,13 +75,47 @@ async def logout_user(
 	refresh_token: str | None = Cookie(default=None),
 	session=Depends(get_db_session),
 ):
-	await service.logout_user(session=session, response=response, refresh_token=refresh_token)
+	await identity_service.logout_user(
+		session=session, response=response, refresh_token=refresh_token
+	)
 	return {"message": "Logged out"}
 
 
 @router.get("/me")
 async def get_me(
-	current_user: dict[str, object] = Depends(service.get_current_user),
+	current_user: dict[str, object] = Depends(identity_service.get_current_user),
 	session=Depends(get_db_session),
 ):
-	return await service.get_user_profile(session, int(current_user["user_id"]))
+	return await identity_service.get_user_profile(session, int(current_user["user_id"]))
+
+@router.get("/check-username")
+async def check_username(
+	username: str,
+	session=Depends(get_db_session),
+):
+	available = await identity_service.is_username_available(
+		session=session, username=username
+	)
+	return UsernameAvailabilityResponse.model_validate({"available": available})
+
+
+@router.put("/me")
+async def update_profile(
+	payload: UserProfileUpdateRequest,
+	current_user: dict[str, object] = Depends(identity_service.get_current_user),
+	session=Depends(get_db_session),
+):
+	try:
+		user = await identity_service.update_user_profile(
+			session=session,
+			user_id=int(current_user["user_id"]),
+			display_name=payload.display_name,
+			username=payload.username,
+			bio=payload.bio,
+		)
+	except identity_service.UsernameTakenError:
+		raise HTTPException(status_code=409, detail="Username is already taken")
+	except identity_service.UserNotFoundError:
+		raise HTTPException(status_code=404, detail="User not found")
+
+	return UserProfileResponse.model_validate(user)
