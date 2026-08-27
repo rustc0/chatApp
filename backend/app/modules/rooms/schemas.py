@@ -38,6 +38,13 @@ class RoomDetailOut(BaseModel):
     created_at: datetime
     modified_at: datetime
 
+class RoomMemberListItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    username: str
+    role: RoomRole
+    status: str
+
 
 class RoomMemberOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)

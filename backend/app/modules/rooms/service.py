@@ -2,6 +2,8 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import aliased
 from fastapi import HTTPException, status
 
+import random
+
 from app.models.identity import User
 from app.models.rooms import Room, RoomMember, RoomType, RoomRole
 
@@ -140,13 +142,34 @@ async def delete_room(session, user_id: int, room_id: int) -> None:
     await session.commit()
 
 
+# hardcoded for now, I'll change when I implement presence tracking
+
+def get_user_status() -> str:
+    return random.choice(["online", "offline"])
+
+# -----------------------------------------------------------------
+
 async def list_room_members(session, user_id: int, room_id: int):
     await _get_room_or_404(session, room_id)
     await _require_membership(session, room_id, user_id)
 
-    stmt = select(RoomMember).where(RoomMember.room_id == room_id)
+    stmt = (
+        select(User, RoomMember)
+        .join(RoomMember, RoomMember.user_id == User.id)
+        .where(RoomMember.room_id == room_id)
+    )
+
     result = await session.execute(stmt)
-    return result.scalars().all()
+    rows = result.all()
+
+    return [
+        {
+            "username": user.username,
+            "role": room_member.role,
+            "status": get_user_status(),
+        }
+        for user, room_member in rows
+    ]
 
 
 async def add_member(session, user_id: int, room_id: int, new_member_id: int) -> RoomMember:

@@ -20,12 +20,13 @@ from app.modules.rooms.schemas import (
     RoomMemberOut,
     AddMemberRequest,
     AssignRoleRequest,
+    RoomMemberListItem
 )
 
 router = APIRouter(prefix="/rooms", tags=["Rooms"])
 
 
-@router.get("")
+@router.get("", response_model=list[RoomOut])
 async def list_rooms(
     current_user: dict[str, object] = Depends(get_current_user),
     session=Depends(get_db_session),
@@ -34,10 +35,10 @@ async def list_rooms(
         session=session,
         user_id=current_user["user_id"],
     )
-    return [RoomOut.model_validate(room) for room in rooms]
+    return rooms
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=RoomOut)
 async def create_room(
     payload: RoomCreate,
     current_user: dict[str, object] = Depends(get_current_user),
@@ -48,10 +49,10 @@ async def create_room(
         user_id=current_user["user_id"],
         name=payload.name,
     )
-    return RoomOut.model_validate(room)
+    return room
 
 
-@router.post("/dm")
+@router.post("/dm", status_code=status.HTTP_201_CREATED, response_model=RoomOut)
 async def get_or_create_dm(
     payload: DMCreate,
     current_user: dict[str, object] = Depends(get_current_user),
@@ -65,10 +66,10 @@ async def get_or_create_dm(
         )
     except UserNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
-    return RoomOut.model_validate(room)
+    return room 
 
 
-@router.get("/{room_id}")
+@router.get("/{room_id}", response_model=RoomDetailOut)
 async def get_room(
     room_id: int,
     current_user: dict[str, object] = Depends(get_current_user),
@@ -84,10 +85,10 @@ async def get_room(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Room not found")
     except RoomForbiddenError:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this room")
-    return RoomDetailOut.model_validate(room)
+    return room
 
 
-@router.patch("/{room_id}")
+@router.patch("/{room_id}", response_model=RoomOut)
 async def update_room(
     room_id: int,
     payload: RoomUpdate,
@@ -105,10 +106,10 @@ async def update_room(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Room not found")
     except RoomForbiddenError:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Owner/admin only")
-    return RoomOut.model_validate(room)
+    return room
 
 
-@router.delete("/{room_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{room_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_room(
     room_id: int,
     current_user: dict[str, object] = Depends(get_current_user),
@@ -126,7 +127,7 @@ async def delete_room(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Owner only")
 
 
-@router.get("/{room_id}/members")
+@router.get("/{room_id}/members", response_model=list[RoomMemberListItem])
 async def list_members(
     room_id: int,
     current_user: dict[str, object] = Depends(get_current_user),
@@ -142,10 +143,10 @@ async def list_members(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Room not found")
     except RoomForbiddenError:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this room")
-    return [RoomMemberOut.model_validate(member) for member in members]
+    return members
 
 
-@router.post("/{room_id}/members", status_code=status.HTTP_201_CREATED)
+@router.post("/{room_id}/members", status_code=status.HTTP_201_CREATED, response_model=RoomMemberOut)
 async def add_member(
     room_id: int,
     payload: AddMemberRequest,
@@ -167,7 +168,7 @@ async def add_member(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin+ only")
     except RoomMemberConflictError:
         raise HTTPException(status.HTTP_409_CONFLICT, "User already a member")
-    return RoomMemberOut.model_validate(member)
+    return member
 
 
 @router.delete("/{room_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -192,7 +193,7 @@ async def remove_member(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to remove this member")
 
 
-@router.post("/{room_id}/members/{user_id}/roles")
+@router.post("/{room_id}/members/{user_id}/roles", response_model=RoomMemberOut)
 async def assign_role(
     room_id: int,
     user_id: int,
@@ -214,4 +215,4 @@ async def assign_role(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found")
     except RoomForbiddenError:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to assign roles")
-    return RoomMemberOut.model_validate(member)
+    return member
