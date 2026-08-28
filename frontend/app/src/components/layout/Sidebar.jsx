@@ -5,7 +5,6 @@ import { IoMdAdd } from "react-icons/io";
 import { useProfileOverlay } from "./ProfileOverlayContext";
 import { getRooms, createRoom } from "../../api/rooms";
 import CreateRoomInput from "./CreateRoomInput";
-import { getMe } from "../../api/authentication.js";
 
 const SidebarRoot = styled.aside`
   display: flex;
@@ -354,32 +353,19 @@ function DirectMessagesButton({ isDirectMessages, onDirectMessages }) {
 }
 
 function ProfilePreview({ onLogout }) {
-
-  const [user, setUser] = useState(null);
-  const { openProfile } = useProfileOverlay();
-
-  useEffect(() => {
-    async function fetchUser() {
-      try {
-        const userData = await getMe();
-        setUser(userData);
-      } catch (error) {
-        console.error("Error fetching user data:", error);
-      }
-    }
-    fetchUser();
-  }, []);
+  const { currentUser, openProfile } = useProfileOverlay();
 
   function openPrfl() {
-    openProfile(user);
+    openProfile();
   }
+
   return (
     <ProfilePreviewBox>
-      <Avatar>{user?.username?.charAt(0)}</Avatar>
+      <Avatar>{currentUser?.username?.charAt(0)}</Avatar>
 
       <div>
         <ProfileName onClick={openPrfl} >
-          {user?.username}</ProfileName>
+          {currentUser?.username}</ProfileName>
         <span>Online</span>
       </div>
       <LogoutButton onClick={onLogout} >

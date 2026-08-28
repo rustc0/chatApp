@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { TbPencil, TbCheck, TbX } from "react-icons/tb";
+import { useProfileOverlay } from "./ProfileOverlayContext";
 
 // Availability hook
 import { checkUsernameAvailability, updateProfile } from "../../api/profile";
@@ -52,6 +53,7 @@ export function useUsernameAvailability(username, currentUsername) {
 // ProfileOverlay component
 
 export default function ProfileOverlay({ user, onClose, onSave }) {
+  const { refreshProfile, loadingProfile } = useProfileOverlay();
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("friends");
   const [saving, setSaving] = useState(false);
@@ -94,6 +96,7 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
         username: draft.username,
         bio: draft.bio,
       });
+      await refreshProfile();
       onSave?.(updated);
       setIsEditing(false);
     } catch (err) {
@@ -113,6 +116,8 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
 
         <Content>
           <Avatar src={user.avatar} alt="" />
+
+          {loadingProfile && <LoadingHint>Refreshing profile...</LoadingHint>}
 
           <HeaderRow>
             <NameBlock>
@@ -295,6 +300,12 @@ const Content = styled.div`
   padding: 0 2rem 2rem;
   display: flex;
   flex-direction: column;
+`;
+
+const LoadingHint = styled.p`
+  margin: 12px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
 `;
 
 const Avatar = styled.img`

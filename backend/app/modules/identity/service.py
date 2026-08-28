@@ -47,7 +47,7 @@ def _serialize_user(user: User) -> dict[str, object]:
 	return {
 		"id": user.id,
 		"username": user.username,
-		"displayName": user.username,
+		"displayName": user.display_name or "",
 		"email": user.email,
 		"bio": user.bio or "",
 		"avatar": user.avatar_url or "",

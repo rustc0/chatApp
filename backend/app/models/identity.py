@@ -22,6 +22,11 @@ class User(Base):
 		nullable=False,
 	)
 
+	display_name: Mapped[str] = mapped_column(
+		sa.String(32),
+		nullable=True,
+	)
+
 	email: Mapped[str] = mapped_column(
 		sa.String(255),
 		unique=True,
