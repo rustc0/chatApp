@@ -77,7 +77,7 @@ services:
       - ./gateway/certs:/etc/nginx/certs
       - ./gateway/gen-cert.sh:/usr/local/bin/gen-cert.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider --no-check-certificate https://127.0.0.1/api/health || exit 1"]
+      test: ["CMD", "curl", "-fsSk", "https://127.0.0.1/api/health"]
       interval: 10s
       timeout: 5s
       retries: 5
