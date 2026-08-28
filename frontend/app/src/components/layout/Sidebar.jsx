@@ -213,6 +213,7 @@ function Sidebar({
   onDirectMessages,
   onLogout
 }) {
+  const { roomsRefreshTick } = useProfileOverlay();
   const [rooms, setRooms] = useState([]);
   const [loaded, setLoaded] = useState("loading");
   const [createOpen, setCreateOpen] = useState(false);
@@ -230,7 +231,7 @@ function Sidebar({
     }
 
     loadRooms();
-  }, []);
+  }, [roomsRefreshTick]);
 
   async function handleCreateRoom(name) {
     try {

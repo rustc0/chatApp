@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
-import { TbPencil, TbCheck, TbX } from "react-icons/tb";
+import { TbPencil, TbCheck, TbX, TbDoorExit, TbUserMinus } from "react-icons/tb";
 import { useProfileOverlay } from "./ProfileOverlayContext";
 
 // Availability hook
 import { checkUsernameAvailability, updateProfile } from "../../api/profile";
+import { getFriendsList, removeFriend } from "../../api/friends";
+import { getRooms, leaveRoom } from "../../api/rooms";
 
 const DEBOUNCE_MS = 400;
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
@@ -53,10 +55,19 @@ export function useUsernameAvailability(username, currentUsername) {
 // ProfileOverlay component
 
 export default function ProfileOverlay({ user, onClose, onSave }) {
-  const { refreshProfile, loadingProfile } = useProfileOverlay();
+  const { refreshProfile, loadingProfile, notifyRoomsChanged } = useProfileOverlay();
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("friends");
   const [saving, setSaving] = useState(false);
+  const [loadingFriends, setLoadingFriends] = useState(false);
+  const [loadingRooms, setLoadingRooms] = useState(false);
+  const [friendsError, setFriendsError] = useState("");
+  const [roomsError, setRoomsError] = useState("");
+  const [friends, setFriends] = useState([]);
+  const [rooms, setRooms] = useState([]);
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [confirmError, setConfirmError] = useState("");
+  const [runningAction, setRunningAction] = useState(false);
   const [draft, setDraft] = useState({
     displayName: user.displayName ?? "",
     username: user.username ?? "",
@@ -64,9 +75,6 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
   });
 
   const usernameStatus = useUsernameAvailability(draft.username, user.username);
-
-  const friends = user.friends ?? [];
-  const rooms = user.rooms ?? [];
 
   const canSave =
     !saving &&
@@ -86,6 +94,92 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
   };
 
   const cancelEditing = () => setIsEditing(false);
+
+  const loadFriends = async () => {
+    setLoadingFriends(true);
+    setFriendsError("");
+
+    try {
+      const friendsData = await getFriendsList();
+      setFriends(Array.isArray(friendsData) ? friendsData : []);
+    } catch (error) {
+      console.error("Failed to load friends:", error);
+      setFriendsError(error?.message || "Failed to load friends.");
+    } finally {
+      setLoadingFriends(false);
+    }
+  };
+
+  const loadRooms = async () => {
+    setLoadingRooms(true);
+    setRoomsError("");
+
+    try {
+      const roomsData = await getRooms();
+      setRooms(Array.isArray(roomsData) ? roomsData : []);
+    } catch (error) {
+      console.error("Failed to load rooms:", error);
+      setRoomsError(error?.message || "Failed to load rooms.");
+    } finally {
+      setLoadingRooms(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "friends") {
+      loadFriends();
+    } else {
+      loadRooms();
+    }
+  }, [activeTab, user.id]);
+
+  const requestRemoveFriend = (friend) => {
+    setConfirmError("");
+    setConfirmAction({
+      type: "friend",
+      id: friend.id,
+      label: friend.username,
+    });
+  };
+
+  const requestLeaveRoom = (room) => {
+    setConfirmError("");
+    setConfirmAction({
+      type: "room",
+      id: room.id,
+      label: room.name || "Direct message",
+    });
+  };
+
+  const cancelConfirmAction = () => {
+    if (runningAction) return;
+    setConfirmError("");
+    setConfirmAction(null);
+  };
+
+  const applyAction = async () => {
+    if (!confirmAction) return;
+
+    setRunningAction(true);
+    setConfirmError("");
+    try {
+      if (confirmAction.type === "friend") {
+        await removeFriend(confirmAction.id);
+        await Promise.all([loadFriends(), refreshProfile()]);
+      } else {
+        await leaveRoom(confirmAction.id, user.id);
+        await Promise.all([loadRooms(), refreshProfile()]);
+        notifyRoomsChanged();
+      }
+      setConfirmError("");
+      setConfirmAction(null);
+    } catch (error) {
+      console.error("Failed to apply profile action:", error);
+      setConfirmError(error?.message || "Failed to apply action.");
+    } finally {
+      setRunningAction(false);
+    }
+  };
 
   const saveEditing = async () => {
     if (!canSave) return;
@@ -212,11 +306,22 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
 
             <ListPanel>
               {activeTab === "friends" &&
-                (friends.length ? (
+                (loadingFriends ? (
+                  <EmptyState>Loading friends...</EmptyState>
+                ) : friendsError ? (
+                  <EmptyState>{friendsError}</EmptyState>
+                ) : friends.length ? (
                   friends.map((f) => (
                     <ListRow key={f.id}>
-                      <RowAvatar src={f.avatar} alt="" />
-                      <RowName>{f.displayName}</RowName>
+                      <RowAvatar>{f.username?.charAt(0)?.toUpperCase() || "?"}</RowAvatar>
+                      <RowName>{f.username}</RowName>
+                      <ActionButton
+                        type="button"
+                        onClick={() => requestRemoveFriend(f)}
+                        aria-label={`Remove ${f.username}`}
+                      >
+                        <TbUserMinus size={16} />
+                      </ActionButton>
                     </ListRow>
                   ))
                 ) : (
@@ -224,11 +329,22 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
                 ))}
 
               {activeTab === "rooms" &&
-                (rooms.length ? (
+                (loadingRooms ? (
+                  <EmptyState>Loading rooms...</EmptyState>
+                ) : roomsError ? (
+                  <EmptyState>{roomsError}</EmptyState>
+                ) : rooms.length ? (
                   rooms.map((r) => (
                     <ListRow key={r.id}>
-                      <RowAvatar src={r.avatar} alt="" />
-                      <RowName>{r.name}</RowName>
+                      <RowAvatar>{(r.name || "DM").charAt(0).toUpperCase()}</RowAvatar>
+                      <RowName>{r.name || "Direct message"}</RowName>
+                      <ActionButton
+                        type="button"
+                        onClick={() => requestLeaveRoom(r)}
+                        aria-label={`Leave ${r.name || "direct message"}`}
+                      >
+                        <TbDoorExit size={16} />
+                      </ActionButton>
                     </ListRow>
                   ))
                 ) : (
@@ -237,6 +353,39 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
             </ListPanel>
           </TabsSection>
         </Content>
+
+        {confirmAction && (
+          <ConfirmBackdrop onClick={cancelConfirmAction}>
+            <ConfirmCard onClick={(e) => e.stopPropagation()}>
+              <ConfirmTitle>
+                {confirmAction.type === "friend" ? "Remove friend?" : "Leave room?"}
+              </ConfirmTitle>
+              <ConfirmText>
+                {confirmAction.type === "friend"
+                  ? `Remove @${confirmAction.label} from your friends?`
+                  : `Leave ${confirmAction.label}?`}
+              </ConfirmText>
+              {confirmError && <ConfirmErrorText>{confirmError}</ConfirmErrorText>}
+              <ConfirmActions>
+                <ConfirmButton
+                  type="button"
+                  onClick={cancelConfirmAction}
+                  disabled={runningAction}
+                >
+                  Cancel
+                </ConfirmButton>
+                <ConfirmButton
+                  type="button"
+                  $danger
+                  onClick={applyAction}
+                  disabled={runningAction}
+                >
+                  {runningAction ? "Applying..." : "Confirm"}
+                </ConfirmButton>
+              </ConfirmActions>
+            </ConfirmCard>
+          </ConfirmBackdrop>
+        )}
       </Card>
     </Overlay>
   );
@@ -507,17 +656,39 @@ const ListRow = styled.div`
   }
 `;
 
-const RowAvatar = styled.img`
+const RowAvatar = styled.div`
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  object-fit: cover;
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-text);
   background: var(--color-surface-hover);
 `;
 
 const RowName = styled.span`
+  flex: 1;
   font-size: 0.95rem;
   color: var(--color-text);
+`;
+
+const ActionButton = styled.button`
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--color-surface-hover);
+  background: transparent;
+  color: var(--color-text-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+  }
 `;
 
 const EmptyState = styled.div`
@@ -525,4 +696,56 @@ const EmptyState = styled.div`
   color: var(--color-text-muted);
   font-size: 0.9rem;
   text-align: center;
+`;
+
+const ConfirmBackdrop = styled.div`
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+`;
+
+const ConfirmCard = styled.div`
+  width: min(92vw, 360px);
+  background: var(--color-bg);
+  border: 1px solid var(--color-surface-hover);
+  border-radius: 12px;
+  padding: 1rem;
+`;
+
+const ConfirmTitle = styled.h4`
+  margin: 0;
+  color: var(--color-text);
+`;
+
+const ConfirmText = styled.p`
+  margin: 0.75rem 0 1rem;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+`;
+
+const ConfirmErrorText = styled.p`
+  margin: 0 0 1rem;
+  color: var(--color-danger, #e5484d);
+  font-size: 0.85rem;
+`;
+
+const ConfirmActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+`;
+
+const ConfirmButton = styled.button`
+  border-radius: 8px;
+  border: 1px solid
+    ${({ $danger }) =>
+      $danger ? "var(--color-danger, #e5484d)" : "var(--color-surface-hover)"};
+  background: ${({ $danger }) => ($danger ? "var(--color-danger, #e5484d)" : "transparent")};
+  color: ${({ $danger }) => ($danger ? "#fff" : "var(--color-text)")};
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+  font-weight: 600;
 `;

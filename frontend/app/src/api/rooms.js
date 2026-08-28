@@ -48,3 +48,14 @@ export async function getDirectMessages() {
 	if (!response.ok) throw new Error(data?.message || "Failed to fetch messages");
 	return data;
 }
+
+export async function leaveRoom(roomId, userId) {
+	const response = await authedFetch(`/api/rooms/${roomId}/members/${userId}`, {
+		method: "DELETE",
+	});
+
+	if (!response.ok) {
+		const data = await parseJsonResponse(response);
+		throw new Error(data?.message || "Failed to leave room");
+	}
+}

@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 
 class FriendModel(BaseModel):
-    id: int
+    user_id: int
     username: str
     bio: str | None = None
 
@@ -32,7 +32,7 @@ async def get_friends_list(
 ):
     friends = await service.list_friends(
         session=session,
-        user_id=current_user["id"],
+        user_id=current_user["user_id"],
         limit=limit,
         offset=offset
     )
@@ -48,7 +48,7 @@ async def get_friend_requests(
 ):
     requests = await service.get_friend_requests(
         session=session,
-        user_id=current_user["id"],
+        user_id=current_user["user_id"],
         limit=limit,
         offset=offset
     )
@@ -56,7 +56,7 @@ async def get_friend_requests(
     return [
         FriendRequestModel.model_validate({
             "sender": request[1],
-            "friendship_id": request[0].id,
+            "friendship_id": request[0].user_id,
             "created_at": request[0].created_at
         })
         for request in requests
@@ -70,7 +70,7 @@ async def add_friend(
 ):
     try:
         friendship = await service.add_friend(
-            session=session, user_id=current_user["id"], friend_id=friend_id
+            session=session, user_id=current_user["user_id"], friend_id=friend_id
         )
     except UserNotFoundError:
         raise HTTPException(status_code=404, detail={"message": "User not found"})
@@ -89,7 +89,7 @@ async def accept_friend_request(
 ):
     try:
         friendship = await service.accept_friend_request(
-            session=session, user_id=current_user["id"], request_id=request_id
+            session=session, user_id=current_user["user_id"], request_id=request_id
         )
     except FriendshipNotFoundError:
         raise HTTPException(status_code=404, detail={"message": "Request not found"})
@@ -108,7 +108,7 @@ async def decline_friend_request(
 ):
     try:
         await service.decline_friend_request(
-            session=session, user_id=current_user["id"], request_id=request_id
+            session=session, user_id=current_user["user_id"], request_id=request_id
         )
     except FriendshipNotFoundError:
         raise HTTPException(status_code=404, detail={"message": "Request not found"})
@@ -127,7 +127,7 @@ async def cancel_friend_request(
 ):
     try:
         await service.cancel_friend_request(
-            session=session, user_id=current_user["id"], request_id=request_id
+            session=session, user_id=current_user["user_id"], request_id=request_id
         )
     except FriendshipNotFoundError:
         raise HTTPException(status_code=404, detail={"message": "Request not found"})
@@ -146,7 +146,7 @@ async def delete_friend(
 ):
     try:
         await service.delete_friend(
-            session=session, user_id=current_user["id"], friend_id=friend_id
+            session=session, user_id=current_user["user_id"], friend_id=friend_id
         )
     except FriendshipNotFoundError:
         raise HTTPException(status_code=404, detail={"message": "Friendship not found"})
