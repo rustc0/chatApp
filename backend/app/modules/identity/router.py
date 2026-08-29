@@ -99,6 +99,17 @@ async def check_username(
 	return UsernameAvailabilityResponse.model_validate({"available": available})
 
 
+@router.get("/by-username", response_model=UserProfileResponse)
+async def get_user_by_username(
+	username: str,
+	session=Depends(get_db_session),
+):
+	user = await identity_service.get_user_by_username(session=session, username=username)
+	if user is None:
+		raise HTTPException(status_code=404, detail={"message": "User not found"})
+	return UserProfileResponse.model_validate(user)
+
+
 @router.put("/me")
 async def update_profile(
 	payload: UserProfileUpdateRequest,

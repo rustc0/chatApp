@@ -23,3 +23,16 @@ export async function updateProfile(payload) {
   }
   return res.json();
 }
+
+export async function getUserByUsername(username) {
+  const res = await authedFetch(
+    `${API_BASE}/by-username?username=${encodeURIComponent(username)}`
+  );
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    throw new Error(data?.message || "User not found");
+  }
+
+  return data;
+}

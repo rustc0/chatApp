@@ -19,6 +19,12 @@ class RoomRole(str, Enum):
 	MEMBER = "member"
 
 
+class RoomInviteStatus(str, Enum):
+	PENDING = "PENDING"
+	ACCEPTED = "ACCEPTED"
+	DECLINED = "DECLINED"
+
+
 class Room(Base):
 	__tablename__ = "rooms"
 
@@ -55,6 +61,30 @@ class RoomMember(Base):
 	joined_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 	room: Mapped["Room"] = relationship(back_populates="members")
+
+
+class RoomInvite(Base):
+	__tablename__ = "room_invites"
+	__table_args__ = (
+		Index("ix_room_invites_invitee_status", "invitee_id", "status"),
+		Index("ix_room_invites_room_invitee_status", "room_id", "invitee_id", "status"),
+	)
+
+	id: Mapped[int] = mapped_column(primary_key=True)
+	room_id: Mapped[int] = mapped_column(
+		ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False
+	)
+	inviter_id: Mapped[int] = mapped_column(
+		ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+	)
+	invitee_id: Mapped[int] = mapped_column(
+		ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+	)
+	status: Mapped[RoomInviteStatus] = mapped_column(
+		nullable=False,
+		default=RoomInviteStatus.PENDING,
+	)
+	created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class Message(Base):

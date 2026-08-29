@@ -3,12 +3,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.database import get_db_session
 from app.modules.friends import service
 from app.modules.identity.service import get_current_user
+from app.modules.friends.service import (
+    FriendshipConflictError,
+    FriendshipForbiddenError,
+    FriendshipNotFoundError,
+    UserNotFoundError,
+)
 
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 
 class FriendModel(BaseModel):
-    user_id: int
+    id: int
     username: str
     bio: str | None = None
 
@@ -56,7 +62,7 @@ async def get_friend_requests(
     return [
         FriendRequestModel.model_validate({
             "sender": request[1],
-            "friendship_id": request[0].user_id,
+            "friendship_id": request[0].id,
             "created_at": request[0].created_at
         })
         for request in requests

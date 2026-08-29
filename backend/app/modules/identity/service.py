@@ -327,8 +327,17 @@ async def get_user_profile(session: AsyncSession, user_id: int) -> dict[str, obj
 
 
 async def is_username_available(*, session, username: str) -> bool:
-	result = await session.execute(select(User).where(User.username == username))
+	normalized_username = _normalize_username(username)
+	result = await session.execute(select(User).where(User.username == normalized_username))
 	return result.scalar_one_or_none() is None
+
+
+async def get_user_by_username(*, session, username: str) -> User | None:
+	normalized_username = _normalize_username(username)
+	result = await session.execute(
+		select(User).where(User.username == normalized_username).limit(1)
+	)
+	return result.scalar_one_or_none()
 
 
 async def update_user_profile(

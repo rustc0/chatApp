@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 import random
 
 from app.models.identity import User
-from app.models.rooms import Room, RoomMember, RoomType, RoomRole
+from app.models.rooms import Room, RoomMember, RoomType, RoomRole, RoomInvite, RoomInviteStatus
 
 
 class RoomNotFoundError(Exception):
@@ -25,6 +25,14 @@ class RoomMemberConflictError(Exception):
 
 
 class UserNotFoundError(Exception):
+    pass
+
+
+class RoomInviteNotFoundError(Exception):
+    pass
+
+
+class RoomInviteConflictError(Exception):
     pass
 
 async def _get_room_or_404(session, room_id: int) -> Room:
@@ -297,3 +305,105 @@ async def assign_role(
     await session.commit()
     await session.refresh(target_membership)
     return target_membership
+
+
+
+async def list_room_invites(session, user_id: int, room_id: int, limit: int, offset: int):
+    inviter = aliased(User)
+    stmt = (
+        select(RoomInvite, Room, inviter)
+        .join(Room, Room.id == RoomInvite.room_id)
+        .join(inviter, inviter.id == RoomInvite.inviter_id)
+        .where(
+            RoomInvite.invitee_id == user_id,
+            RoomInvite.status == RoomInviteStatus.PENDING,
+        )
+        .order_by(RoomInvite.created_at.desc(), RoomInvite.id.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    rows = result.all()
+    return [
+        {
+            "id": invite.id,
+            "room_id": invite.room_id,
+            "room_name": room.name,
+            "inviter_username": inviter_user.username,
+            "status": invite.status,
+            "created_at": invite.created_at,
+        }
+        for invite, room, inviter_user in rows
+    ]
+
+
+async def invite_user_to_room(session, user_id: int, room_id: int, invitee_id: int) -> RoomInvite:
+    await _get_room_or_404(session, room_id)
+    membership = await _require_membership(session, room_id, user_id)
+
+    if membership.role not in (RoomRole.OWNER, RoomRole.ADMIN):
+        raise RoomForbiddenError
+
+    invitee = await session.get(User, invitee_id)
+    if invitee is None:
+        raise UserNotFoundError()
+
+    existing_member = await session.get(RoomMember, (room_id, invitee_id))
+    if existing_member is not None:
+        raise RoomInviteConflictError()
+
+    result = await session.execute(
+        select(RoomInvite).where(
+            RoomInvite.room_id == room_id,
+            RoomInvite.invitee_id == invitee_id,
+            RoomInvite.status == RoomInviteStatus.PENDING,
+        )
+    )
+    existing = result.scalars().first()
+    if existing is not None:
+        raise RoomInviteConflictError()
+
+    invite = RoomInvite(
+        room_id=room_id,
+        inviter_id=user_id,
+        invitee_id=invitee_id,
+        status=RoomInviteStatus.PENDING,
+    )
+    session.add(invite)
+    await session.commit()
+    await session.refresh(invite)
+    return invite
+
+
+async def accept_room_invite(session, user_id: int, invite_id: int) -> RoomInvite:
+    invite = await session.get(RoomInvite, invite_id)
+    if invite is None:
+        raise RoomInviteNotFoundError()
+    if invite.invitee_id != user_id:
+        raise RoomForbiddenError
+    if invite.status != RoomInviteStatus.PENDING:
+        raise RoomInviteConflictError()
+
+    room_member = await session.get(RoomMember, (invite.room_id, user_id))
+    if room_member is None:
+        session.add(
+            RoomMember(room_id=invite.room_id, user_id=user_id, role=RoomRole.MEMBER)
+        )
+
+    invite.status = RoomInviteStatus.ACCEPTED
+    await session.commit()
+    await session.refresh(invite)
+    return invite
+
+
+async def decline_room_invite(session, user_id: int, invite_id: int) -> None:
+    invite = await session.get(RoomInvite, invite_id)
+    if invite is None:
+        raise RoomInviteNotFoundError()
+    if invite.invitee_id != user_id:
+        raise RoomForbiddenError
+    if invite.status != RoomInviteStatus.PENDING:
+        raise RoomInviteConflictError()
+
+    invite.status = RoomInviteStatus.DECLINED
+    await session.commit()

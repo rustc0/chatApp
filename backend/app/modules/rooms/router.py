@@ -9,6 +9,8 @@ from app.modules.rooms.service import (
     RoomMemberNotFoundError,
     RoomMemberConflictError,
     UserNotFoundError,
+    RoomInviteNotFoundError,
+    RoomInviteConflictError,
 )
 
 from app.modules.rooms.schemas import (
@@ -20,7 +22,9 @@ from app.modules.rooms.schemas import (
     RoomMemberOut,
     AddMemberRequest,
     AssignRoleRequest,
-    RoomMemberListItem
+    RoomMemberListItem,
+    RoomInviteCreate,
+    RoomInviteOut,
 )
 
 router = APIRouter(prefix="/rooms", tags=["Rooms"])
@@ -216,3 +220,85 @@ async def assign_role(
     except RoomForbiddenError:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to assign roles")
     return member
+
+
+
+@router.get("/{room_id}/invites", response_model=list[RoomInviteOut])
+async def list_invites(
+    room_id: int,
+    current_user: dict[str, object] = Depends(get_current_user),
+    session=Depends(get_db_session),
+):
+    return await service.list_room_invites(
+        session=session,
+        user_id=current_user["user_id"],
+        room_id=room_id,
+        limit=100,
+        offset=0,
+    )
+
+
+@router.post("/{room_id}/invites", status_code=status.HTTP_201_CREATED, response_model=RoomInviteOut)
+async def invite_member(
+    room_id: int,
+    payload: RoomInviteCreate,
+    current_user: dict[str, object] = Depends(get_current_user),
+    session=Depends(get_db_session),
+):
+    try:
+        invite = await service.invite_user_to_room(
+            session=session,
+            user_id=current_user["user_id"],
+            room_id=room_id,
+            invitee_id=payload.user_id,
+        )
+    except RoomNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Room not found")
+    except UserNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    except RoomForbiddenError:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin+ only")
+    except RoomInviteConflictError:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Invite already exists")
+    return invite
+
+
+@router.post("/invites/{invite_id}/accept", response_model=RoomInviteOut)
+async def accept_invite(
+    invite_id: int,
+    current_user: dict[str, object] = Depends(get_current_user),
+    session=Depends(get_db_session),
+):
+    try:
+        invite = await service.accept_room_invite(
+            session=session,
+            user_id=current_user["user_id"],
+            invite_id=invite_id,
+        )
+    except RoomInviteNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invite not found")
+    except RoomForbiddenError:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to modify this invite")
+    except RoomInviteConflictError:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Invite is no longer pending")
+    return invite
+
+
+@router.delete("/invites/{invite_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def decline_invite(
+    invite_id: int,
+    current_user: dict[str, object] = Depends(get_current_user),
+    session=Depends(get_db_session),
+):
+    try:
+        await service.decline_room_invite(
+            session=session,
+            user_id=current_user["user_id"],
+            invite_id=invite_id,
+        )
+    except RoomInviteNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invite not found")
+    except RoomForbiddenError:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to modify this invite")
+    except RoomInviteConflictError:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Invite is no longer pending")

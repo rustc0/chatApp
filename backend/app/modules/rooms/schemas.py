@@ -61,3 +61,18 @@ class AddMemberRequest(BaseModel):
 
 class AssignRoleRequest(BaseModel):
     role: RoomRole
+
+
+class RoomInviteCreate(BaseModel):
+    user_id: int
+
+
+class RoomInviteOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    room_id: int
+    room_name: str | None
+    inviter_username: str
+    status: str
+    created_at: datetime
