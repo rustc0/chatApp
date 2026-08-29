@@ -197,21 +197,78 @@ async def add_member(session, user_id: int, room_id: int, new_member_id: int) ->
 async def remove_member(session, user_id: int, room_id: int, target_user_id: int) -> None:
     await _get_room_or_404(session, room_id)
 
-    target_membership = await session.get(RoomMember, (room_id, target_user_id))
+    target_membership = await session.get(
+        RoomMember,
+        (room_id, target_user_id),
+    )
+
     if target_membership is None:
         raise RoomMemberNotFoundError
 
     if target_user_id == user_id:
-        # leaving -- owner must transfer ownership before leaving
+        # Leaving the room
+
+        members = await session.execute(
+            select(RoomMember).where(RoomMember.room_id == room_id)
+        )
+        members = members.scalars().all()
+
+        if len(members) == 1:
+            # Last member is leaving.
+            # Delete the room entirely.
+            room = await session.get(Room, room_id)
+
+            await session.delete(room)
+            await session.commit()
+            return
+
         if target_membership.role == RoomRole.OWNER:
-            raise RoomForbiddenError
-    else:
-        # kicking -- actor must be admin+, owner cannot be kicked
-        actor_membership = await _require_membership(session, room_id, user_id)
-        if actor_membership.role not in (RoomRole.OWNER, RoomRole.ADMIN):
-            raise RoomForbiddenError
-        if target_membership.role == RoomRole.OWNER:
-            raise RoomForbiddenError
+            # Owner is leaving while other members remain.
+            # Make sure the room will still have an admin.
+
+            admin_exists = any(
+                member.role == RoomRole.ADMIN
+                for member in members
+                if member.user_id != target_user_id
+            )
+
+            if not admin_exists:
+                # No admin remains, so promote another member.
+                new_admin = next(
+                    member
+                    for member in members
+                    if member.user_id != target_user_id
+                )
+
+                new_admin.role = RoomRole.ADMIN
+
+        await session.delete(target_membership)
+        await session.commit()
+        return
+
+    # Kicking another member
+    actor_membership = await _require_membership(
+        session,
+        room_id,
+        user_id,
+    )
+
+    if actor_membership.role not in (
+        RoomRole.OWNER,
+        RoomRole.ADMIN,
+    ):
+        raise RoomForbiddenError
+
+    # Owner cannot be kicked.
+    if target_membership.role == RoomRole.OWNER:
+        raise RoomForbiddenError
+
+    # Admins cannot kick other admins.
+    if (
+        actor_membership.role == RoomRole.ADMIN
+        and target_membership.role == RoomRole.ADMIN
+    ):
+        raise RoomForbiddenError
 
     await session.delete(target_membership)
     await session.commit()
