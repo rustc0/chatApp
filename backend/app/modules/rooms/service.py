@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 import random
 
 from app.models.identity import User
-from app.models.rooms import Room, RoomMember, RoomType, RoomRole, RoomInvite, RoomInviteStatus
+from app.models.rooms import Room, RoomMember, RoomType, RoomRole, RoomInvite, RoomInviteStatus, Message
 
 
 class RoomNotFoundError(Exception):
@@ -49,15 +49,66 @@ async def _require_membership(session, room_id: int, user_id: int) -> RoomMember
     return membership
 
 
-async def list_user_rooms(session, user_id: int):
+async def list_user_rooms(session, user_id: int, limit: int = 50, offset: int = 0):
     stmt = (
         select(Room)
         .join(RoomMember, RoomMember.room_id == Room.id)
         .where(RoomMember.user_id == user_id)
         .order_by(Room.modified_at.desc())
+        .offset(offset)
+        .limit(limit)
     )
-    result = await session.execute(stmt)
-    return result.scalars().all()
+    rooms = list((await session.execute(stmt)).scalars().all())
+    if not rooms:
+        return rooms
+
+    room_ids = [room.id for room in rooms]
+
+    # DM peers: the other member of each dm room
+    peer_rows = (
+        await session.execute(
+            select(RoomMember.room_id, User)
+            .join(User, User.id == RoomMember.user_id)
+            .where(RoomMember.room_id.in_(room_ids), RoomMember.user_id != user_id)
+        )
+    ).all()
+    peers = {room_id: user for room_id, user in peer_rows}
+
+    # last message per room
+    latest = (
+        select(Message.room_id, func.max(Message.id).label("message_id"))
+        .where(Message.room_id.in_(room_ids))
+        .group_by(Message.room_id)
+        .subquery()
+    )
+    message_rows = (
+        await session.execute(
+            select(Message).join(latest, Message.id == latest.c.message_id)
+        )
+    ).scalars().all()
+    last_messages = {message.room_id: message for message in message_rows}
+
+    for room in rooms:
+        message = last_messages.get(room.id)
+        room.last_message = (
+            {
+                "id": message.id,
+                "content": message.content,
+                "sender_id": message.sender_id,
+                "sent_at": message.sent_at,
+            }
+            if message
+            else None
+        )
+
+        peer = peers.get(room.id) if room.type == RoomType.DM else None
+        room.peer = (
+            {"id": peer.id, "username": peer.username, "status": get_user_status()}
+            if peer
+            else None
+        )
+
+    return rooms
 
 
 async def create_room(session, user_id: int, name: str) -> Room:
@@ -172,6 +223,7 @@ async def list_room_members(session, user_id: int, room_id: int):
 
     return [
         {
+            "id": user.id,
             "username": user.username,
             "role": room_member.role,
             "status": get_user_status(),

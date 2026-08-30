@@ -1,82 +1,61 @@
-import { authedFetch } from "./authentication";
+import { buildQuery, request } from "./http";
 
-async function parseJsonResponse(response) {
-  const text = await response.text();
-  if (!text) return null;
+const FRIENDS = "/api/friends";
 
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
+/** limit/offset are now forwarded — the router has always accepted them. */
+export async function getFriendsList({ limit = 50, offset = 0 } = {}) {
+  return request(
+    `${FRIENDS}/list${buildQuery({ limit, offset })}`,
+    {},
+    "Failed to fetch friends",
+  );
 }
 
-export async function getFriendsList() {
-  const response = await authedFetch("/api/friends/list");
-  const data = await parseJsonResponse(response);
-
-  if (!response.ok) {
-    throw new Error(data?.message || "Failed to fetch friends");
-  }
-
-  return data;
-}
-
-export async function getFriendRequests() {
-  const response = await authedFetch("/api/friends/requests");
-  const data = await parseJsonResponse(response);
-
-  if (!response.ok) {
-    throw new Error(data?.message || "Failed to fetch friend requests");
-  }
-
-  return data;
+export async function getFriendRequests({ limit = 50, offset = 0 } = {}) {
+  return request(
+    `${FRIENDS}/requests${buildQuery({ limit, offset })}`,
+    {},
+    "Failed to fetch friend requests",
+  );
 }
 
 export async function sendFriendRequest(friendId) {
-  const response = await authedFetch(`/api/friends/add/${friendId}`, {
-    method: "POST",
-  });
-
-  if (!response.ok) {
-    const data = await parseJsonResponse(response);
-    throw new Error(data?.message || "Failed to send friend request");
-  }
-
-  return parseJsonResponse(response);
+  return request(
+    `${FRIENDS}/add/${friendId}`,
+    { method: "POST" },
+    "Failed to send friend request",
+  );
 }
 
 export async function acceptFriendRequest(requestId) {
-  const response = await authedFetch(`/api/friends/request/${requestId}/accept`, {
-    method: "POST",
-  });
-
-  if (!response.ok) {
-    const data = await parseJsonResponse(response);
-    throw new Error(data?.message || "Failed to accept friend request");
-  }
-
-  return parseJsonResponse(response);
+  return request(
+    `${FRIENDS}/request/${requestId}/accept`,
+    { method: "POST" },
+    "Failed to accept friend request",
+  );
 }
 
 export async function declineFriendRequest(requestId) {
-  const response = await authedFetch(`/api/friends/request/${requestId}/decline`, {
-    method: "POST",
-  });
+  return request(
+    `${FRIENDS}/request/${requestId}/decline`,
+    { method: "POST" },
+    "Failed to decline friend request",
+  );
+}
 
-  if (!response.ok) {
-    const data = await parseJsonResponse(response);
-    throw new Error(data?.message || "Failed to decline friend request");
-  }
+/** Cancels a request *you* sent (DELETE /friends/request/{id}). */
+export async function cancelFriendRequest(requestId) {
+  return request(
+    `${FRIENDS}/request/${requestId}`,
+    { method: "DELETE" },
+    "Failed to cancel friend request",
+  );
 }
 
 export async function removeFriend(friendId) {
-  const response = await authedFetch(`/api/friends/delete/${friendId}`, {
-    method: "DELETE",
-  });
-
-  if (!response.ok) {
-    const data = await parseJsonResponse(response);
-    throw new Error(data?.message || "Failed to remove friend");
-  }
+  return request(
+    `${FRIENDS}/delete/${friendId}`,
+    { method: "DELETE" },
+    "Failed to remove friend",
+  );
 }

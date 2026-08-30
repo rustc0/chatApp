@@ -100,8 +100,9 @@ class Friendship(Base):
 	)
 
 	__table_args__ = (
-		Index("ix_friendships_sender_status", "sender_id", "status", unique=True),
-		Index("ix_friendships_receiver_status", "receiver_id", "status", unique=True),
+		Index("ix_friendships_sender_status", "sender_id", "status"),
+		Index("ix_friendships_receiver_status", "receiver_id", "status"),
+		Index("ux_friendships_sender_receiver", "sender_id", "receiver_id", unique=True),
 	)
 
 

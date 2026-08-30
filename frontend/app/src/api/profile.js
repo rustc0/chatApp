@@ -1,47 +1,48 @@
-import { authedFetch } from "./authentication";
+import { ApiError, authedFetch, buildQuery, jsonBody, request } from "./http";
 
-const API_BASE = "/api/users"
+const API_BASE = "/api/users";
 
 export async function checkUsernameAvailability(username, { signal } = {}) {
-  const res = await authedFetch(
-    `${API_BASE}/check-username?username=${encodeURIComponent(username)}`,
-    { signal }
+  // -> { available: boolean }
+  return request(
+    `${API_BASE}/check-username${buildQuery({ username })}`,
+    { signal },
+    "Failed to check username",
   );
-  if (!res.ok) throw new Error("Failed to check username");
-  return res.json(); // { available: boolean }
 }
 
 export async function updateProfile(payload) {
-  const res = await authedFetch(`${API_BASE}/me`, {
-    method: "PUT",
-	headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail ?? "Failed to update profile");
-  }
-  return res.json();
+  // payload: { display_name, username, bio } — any subset
+  return request(
+    `${API_BASE}/me`,
+    { method: "PUT", ...jsonBody(payload) },
+    "Failed to update profile",
+  );
 }
 
 export async function getUserByUsername(username) {
-  const res = await authedFetch(
-    `${API_BASE}/by-username?username=${encodeURIComponent(username)}`
+  return request(
+    `${API_BASE}/by-username${buildQuery({ username })}`,
+    {},
+    "User not found",
   );
-  const data = await res.json().catch(() => null);
-
-  if (!res.ok) {
-    throw new Error(data?.message || "User not found");
-  }
-
-  return data;
 }
 
-export async function getAvatarBlob(avatarFile) {
-  const response = await authedFetch(`/api/users/avatar/${avatarFile}`);
+/**
+ * /me returns the stored filename in `avatar` (it was read as `avatar_file`
+ * before, which never existed on the response).
+ */
+export function avatarUrl(avatar) {
+  return avatar ? `${API_BASE}/avatar/${encodeURIComponent(avatar)}` : null;
+}
+
+export async function getAvatarBlob(avatar) {
+  const response = await authedFetch(avatarUrl(avatar));
+
   if (!response.ok) {
-    throw new Error("Failed to fetch avatar");
+    throw new ApiError("Failed to fetch avatar", response.status, null);
   }
+
   return response.blob();
 }
 
@@ -49,12 +50,14 @@ export async function uploadAvatar(file) {
   const formData = new FormData();
   formData.append("avatar", file);
 
-  const response = await authedFetch("/api/users/me/avatar", {
-    method: "POST",
-    body: formData,
-  });
+  // No Content-Type header — the browser sets the multipart boundary.
+  return request(
+    `${API_BASE}/me/avatar`,
+    { method: "POST", body: formData },
+    "Failed to upload avatar",
+  );
+}
 
-  const data = await parseJsonResponse(response);
-  if (!response.ok) throw new Error(data?.message || "Failed to upload avatar");
-  return data;
+export async function deleteAvatar() {
+  return request(`${API_BASE}/me/avatar`, { method: "DELETE" }, "Failed to remove avatar");
 }

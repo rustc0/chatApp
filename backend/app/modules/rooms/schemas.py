@@ -18,6 +18,19 @@ class RoomUpdate(BaseModel):
     avatar: str | None = None
 
 
+class RoomPeer(BaseModel):
+    id: int
+    username: str
+    status: str
+
+
+class LastMessage(BaseModel):
+    id: int
+    content: str
+    sender_id: int
+    sent_at: datetime
+
+
 class RoomOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -26,6 +39,8 @@ class RoomOut(BaseModel):
     type: RoomType
     created_at: datetime
     modified_at: datetime
+    peer: RoomPeer | None = None            # DMs only
+    last_message: LastMessage | None = None
 
 
 class RoomDetailOut(BaseModel):
@@ -41,6 +56,7 @@ class RoomDetailOut(BaseModel):
 class RoomMemberListItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    id: int
     username: str
     role: RoomRole
     status: str

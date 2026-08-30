@@ -32,8 +32,10 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_HOST: db
       POSTGRES_PORT: ${POSTGRES_PORT}
+      AVATAR_DIR: /app/media/avatars
     volumes:
       - ./backend:/app
+      - avatars:/app/media/avatars
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 10s
@@ -87,6 +89,7 @@ services:
 volumes:
   db-data:
     name: chatapp-db-data
+  avatars:
 
 networks:
   chatapp-net:

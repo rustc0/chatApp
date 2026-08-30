@@ -90,6 +90,11 @@ def _encode_access_token(user_id: int) -> str:
 	return f"{encoded_header}.{encoded_payload}.{_base64url_encode(signature)}"
 
 
+def decode_access_token(token: str) -> dict[str, object]:
+	"""Public alias — used by the room WebSocket."""
+	return _decode_access_token(token)
+
+
 def _decode_access_token(token: str) -> dict[str, object]:
 	try:
 		header_segment, payload_segment, signature_segment = token.split(".")

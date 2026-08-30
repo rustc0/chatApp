@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, File, HTTPException, Response, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from app.modules.identity import avatar_service
 from app.modules.identity import service as identity_service
 from app.database import get_db_session
 
@@ -129,4 +131,30 @@ async def update_profile(
 	except identity_service.UserNotFoundError:
 		raise HTTPException(status_code=404, detail="User not found")
 
-	return UserProfileResponse.model_validate(user)
+	return identity_service._serialize_user(user)
+
+
+@router.get("/avatar/{filename}")
+async def get_avatar(filename: str):
+	return FileResponse(avatar_service.avatar_path(filename))
+
+
+@router.post("/me/avatar")
+async def upload_avatar(
+	avatar: UploadFile = File(...),
+	current_user: dict[str, object] = Depends(identity_service.get_current_user),
+	session=Depends(get_db_session),
+):
+	return await avatar_service.save_avatar(
+		session=session, user_id=int(current_user["user_id"]), upload=avatar
+	)
+
+
+@router.delete("/me/avatar")
+async def remove_avatar(
+	current_user: dict[str, object] = Depends(identity_service.get_current_user),
+	session=Depends(get_db_session),
+):
+	return await avatar_service.clear_avatar(
+		session=session, user_id=int(current_user["user_id"])
+	)

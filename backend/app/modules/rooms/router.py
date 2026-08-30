@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.modules.identity.service import get_current_user
 from app.database import get_db_session
@@ -32,12 +32,16 @@ router = APIRouter(prefix="/rooms", tags=["Rooms"])
 
 @router.get("", response_model=list[RoomOut])
 async def list_rooms(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     current_user: dict[str, object] = Depends(get_current_user),
     session=Depends(get_db_session),
 ):
     rooms = await service.list_user_rooms(
         session=session,
         user_id=current_user["user_id"],
+        limit=limit,
+        offset=offset,
     )
     return rooms
 
@@ -71,6 +75,22 @@ async def get_or_create_dm(
     except UserNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     return room 
+
+
+@router.get("/invites", response_model=list[RoomInviteOut])
+async def list_my_invites(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: dict[str, object] = Depends(get_current_user),
+    session=Depends(get_db_session),
+):
+    return await service.list_room_invites(
+        session=session,
+        user_id=current_user["user_id"],
+        room_id=None,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/{room_id}", response_model=RoomDetailOut)
