@@ -14,8 +14,10 @@ import { useProfileOverlay } from "./ProfileOverlayContext";
 
 import {
   checkUsernameAvailability,
+  getAvatarBlob,
   getUserByUsername,
   updateProfile,
+  uploadAvatar,
 } from "../../api/profile";
 
 import {
@@ -95,6 +97,59 @@ export function useUsernameAvailability(username, currentUsername) {
 
 
 // -----------------------------------------------------------------------------
+// Avatar loading
+// -----------------------------------------------------------------------------
+
+function useAvatarUrl(avatarFile) {
+  const [avatarUrl, setAvatarUrl] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let objectUrl = null;
+    let cancelled = false;
+
+    if (!avatarFile) {
+      setAvatarUrl(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    getAvatarBlob(avatarFile)
+      .then((blob) => {
+        if (cancelled) return;
+
+        objectUrl = URL.createObjectURL(blob);
+        setAvatarUrl(objectUrl);
+      })
+      .catch((error) => {
+        console.error("Failed to load avatar:", error);
+
+        if (!cancelled) {
+          setAvatarUrl(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [avatarFile]);
+
+  return { avatarUrl, loading };
+}
+
+
+// -----------------------------------------------------------------------------
 // Component
 // -----------------------------------------------------------------------------
 
@@ -104,6 +159,48 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
     loadingProfile,
     notifyRoomsChanged,
   } = useProfileOverlay();
+
+  const { avatarUrl, loading: avatarLoading } = useAvatarUrl(
+    user.avatar_file
+  );
+
+  const avatarInputRef = useRef(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
+
+  const handleAvatarButtonClick = () => {
+    if (avatarUploading) {
+      return;
+    }
+
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    setAvatarUploading(true);
+    setAvatarError("");
+
+    try {
+      await uploadAvatar(file);
+      await refreshProfile();
+    } catch (error) {
+      console.error("Failed to upload avatar:", error);
+
+      setAvatarError(
+        error?.message || "Failed to upload avatar."
+      );
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
 
   // ---------------------------------------------------------------------------
   // View state
@@ -958,18 +1055,52 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
           <TbX size={20} />
         </CloseButton>
 
+        {view === "profile" && (
+          <AvatarWrap>
+            <AvatarButton
+              type="button"
+              onClick={handleAvatarButtonClick}
+              disabled={avatarUploading}
+              aria-label="Update avatar"
+            >
+              {avatarLoading ? null : avatarUrl ? (
+                <AvatarImage src={avatarUrl} alt="" />
+              ) : (
+                <AvatarFallback>
+                  {user.displayName
+                    ?.charAt(0)
+                    ?.toUpperCase() || "?"}
+                </AvatarFallback>
+              )}
+
+              <AvatarOverlay>
+                {avatarUploading
+                  ? "Uploading..."
+                  : "Update avatar"}
+              </AvatarOverlay>
+            </AvatarButton>
+
+            <HiddenFileInput
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarFileChange}
+            />
+
+            {avatarError && (
+              <AvatarErrorText>
+                {avatarError}
+              </AvatarErrorText>
+            )}
+          </AvatarWrap>
+        )}
+
         <Content>
           {view === "profile" ? (
             <>
               {/* ------------------------------------------------------------- */}
               {/* PROFILE VIEW                                                   */}
               {/* ------------------------------------------------------------- */}
-
-              <Avatar
-                src={user.avatar}
-                alt=""
-                $profileView={view === "profile"}
-              />
 
               {loadingProfile && (
                 <LoadingHint>
@@ -1460,6 +1591,108 @@ const CloseButton = styled.button`
 `;
 
 
+// =============================================================================
+// Avatar — straddles the banner/content seam, centered horizontally,
+// dims and shows an "Update avatar" overlay on hover.
+// =============================================================================
+
+const AvatarWrap = styled.div`
+  flex-shrink: 0;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  gap: 6px;
+
+  margin-top: -64px;
+
+  z-index: 1;
+`;
+
+const AvatarOverlay = styled.div`
+  position: absolute;
+  inset: 0;
+
+  display: grid;
+  place-items: center;
+
+  padding: 0 10px;
+
+  text-align: center;
+
+  font-size: 0.75rem;
+  font-weight: 600;
+
+  color: #fff;
+
+  background: rgba(0, 0, 0, 0.55);
+
+  opacity: 0;
+
+  transition: opacity 0.15s ease;
+`;
+
+const AvatarButton = styled.button`
+  position: relative;
+
+  width: 128px;
+  height: 128px;
+
+  padding: 0;
+
+  border: 5px solid var(--color-bg);
+  border-radius: 50%;
+
+  overflow: hidden;
+
+  background: var(--color-surface-hover);
+
+  cursor: pointer;
+
+  &:hover:not(:disabled) ${AvatarOverlay} {
+    opacity: 1;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+`;
+
+const AvatarImage = styled.img`
+  position: absolute;
+  inset: 0;
+
+  width: 100%;
+  height: 100%;
+
+  object-fit: cover;
+`;
+
+const AvatarFallback = styled.span`
+  position: absolute;
+  inset: 0;
+
+  display: grid;
+  place-items: center;
+
+  font-size: 2.25rem;
+  font-weight: 700;
+
+  color: var(--color-text-muted);
+`;
+
+const HiddenFileInput = styled.input`
+  display: none;
+`;
+
+const AvatarErrorText = styled.span`
+  font-size: 0.75rem;
+
+  color: var(--color-danger, #e5484d);
+`;
+
+
 const Content = styled.div`
   flex: 1;
   min-height: 0;
@@ -1479,22 +1712,6 @@ const LoadingHint = styled.p`
   color: var(--color-text-muted);
 
   font-size: 0.9rem;
-`;
-
-
-const Avatar = styled.img`
-  flex-shrink: 0;
-
-  width: 128px;
-  height: 128px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 5px solid var(--color-bg);
-
-  margin-top: ${({ $profileView }) =>
-    $profileView ? "-64px" : "0"};
-
-  background: var(--color-bg);
 `;
 
 

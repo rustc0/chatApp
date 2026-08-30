@@ -36,3 +36,25 @@ export async function getUserByUsername(username) {
 
   return data;
 }
+
+export async function getAvatarBlob(avatarFile) {
+  const response = await authedFetch(`/api/users/avatar/${avatarFile}`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch avatar");
+  }
+  return response.blob();
+}
+
+export async function uploadAvatar(file) {
+  const formData = new FormData();
+  formData.append("avatar", file);
+
+  const response = await authedFetch("/api/users/me/avatar", {
+    method: "POST",
+    body: formData,
+  });
+
+  const data = await parseJsonResponse(response);
+  if (!response.ok) throw new Error(data?.message || "Failed to upload avatar");
+  return data;
+}
