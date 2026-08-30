@@ -58,6 +58,11 @@ async def add_friend(session: AsyncSession, user_id: int, friend_id: int) -> Fri
 	if friend is None:
 		raise UserNotFoundError()
 
+	# Serialize on the unordered pair so two racing requests (in either
+	# direction) can't both pass the existence check below.
+	lock_key = (min(user_id, friend_id) << 32) | max(user_id, friend_id)
+	await session.execute(sa.select(sa.func.pg_advisory_xact_lock(lock_key)))
+
 	result = await session.execute(
 		sa.select(Friendship).where(
 			sa.or_(
@@ -84,7 +89,11 @@ async def add_friend(session: AsyncSession, user_id: int, friend_id: int) -> Fri
 
 	friendship = Friendship(sender_id=user_id, receiver_id=friend_id, status="pending")
 	session.add(friendship)
-	await session.commit()
+	try:
+		await session.commit()
+	except IntegrityError as exc:
+		await session.rollback()
+		raise FriendshipConflictError("Friend request already sent") from exc
 	await session.refresh(friendship)
 	return friendship
 

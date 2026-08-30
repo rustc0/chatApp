@@ -1,8 +1,8 @@
+import random
+
 from sqlalchemy import select, func
 from sqlalchemy.orm import aliased
 from fastapi import HTTPException, status
-
-import random
 
 from app.models.identity import User
 from app.models.rooms import Room, RoomMember, RoomType, RoomRole, RoomInvite, RoomInviteStatus, Message
@@ -45,6 +45,8 @@ async def _get_room_or_404(session, room_id: int) -> Room:
 async def _require_membership(session, room_id: int, user_id: int) -> RoomMember:
     membership = await session.get(RoomMember, (room_id, user_id))
     if membership is None:
+        if await session.get(Room, room_id) is None:
+            raise RoomNotFoundError
         raise RoomForbiddenError
     return membership
 
@@ -129,6 +131,11 @@ async def get_or_create_dm(session, user_id: int, other_user_id: int) -> Room:
     other_user = await session.get(User, other_user_id)
     if other_user is None:
         raise UserNotFoundError()
+
+    # Serialize on the unordered pair so two concurrent requests for the same
+    # pair can't both pass the "does a DM already exist" check below.
+    lock_key = (min(user_id, other_user_id) << 32) | max(user_id, other_user_id)
+    await session.execute(select(func.pg_advisory_xact_lock(lock_key)))
 
     rm1 = aliased(RoomMember)
     rm2 = aliased(RoomMember)
@@ -255,7 +262,7 @@ async def add_member(session, user_id: int, room_id: int, new_member_id: int) ->
 
 
 async def remove_member(session, user_id: int, room_id: int, target_user_id: int) -> None:
-    await _get_room_or_404(session, room_id)
+    room = await _get_room_or_404(session, room_id)
 
     target_membership = await session.get(
         RoomMember,
@@ -268,6 +275,13 @@ async def remove_member(session, user_id: int, room_id: int, target_user_id: int
     if target_user_id == user_id:
         # Leaving the room
 
+        if room.type == RoomType.DM:
+            # A DM only ever has its two original members; leaving it means
+            # ending the conversation, not orphaning a 1-member room.
+            await session.delete(room)
+            await session.commit()
+            return
+
         members = await session.execute(
             select(RoomMember).where(RoomMember.room_id == room_id)
         )
@@ -276,31 +290,22 @@ async def remove_member(session, user_id: int, room_id: int, target_user_id: int
         if len(members) == 1:
             # Last member is leaving.
             # Delete the room entirely.
-            room = await session.get(Room, room_id)
-
             await session.delete(room)
             await session.commit()
             return
 
         if target_membership.role == RoomRole.OWNER:
             # Owner is leaving while other members remain.
-            # Make sure the room will still have an admin.
+            # Hand ownership to an existing admin, or promote whoever's left.
 
-            admin_exists = any(
-                member.role == RoomRole.ADMIN
-                for member in members
-                if member.user_id != target_user_id
+            remaining = [
+                member for member in members if member.user_id != target_user_id
+            ]
+            new_owner = next(
+                (member for member in remaining if member.role == RoomRole.ADMIN),
+                remaining[0],
             )
-
-            if not admin_exists:
-                # No admin remains, so promote another member.
-                new_admin = next(
-                    member
-                    for member in members
-                    if member.user_id != target_user_id
-                )
-
-                new_admin.role = RoomRole.ADMIN
+            new_owner.role = RoomRole.OWNER
 
         await session.delete(target_membership)
         await session.commit()
@@ -360,20 +365,26 @@ async def assign_role(
 
 
 
-async def list_room_invites(session, user_id: int, room_id: int, limit: int, offset: int):
+async def list_room_invites(session, user_id: int, room_id: int | None, limit: int, offset: int):
     inviter = aliased(User)
     stmt = (
         select(RoomInvite, Room, inviter)
         .join(Room, Room.id == RoomInvite.room_id)
         .join(inviter, inviter.id == RoomInvite.inviter_id)
-        .where(
-            RoomInvite.invitee_id == user_id,
-            RoomInvite.status == RoomInviteStatus.PENDING,
-        )
-        .order_by(RoomInvite.created_at.desc(), RoomInvite.id.desc())
-        .offset(offset)
-        .limit(limit)
+        .where(RoomInvite.status == RoomInviteStatus.PENDING)
     )
+
+    if room_id is not None:
+        # Invites addressed to this specific room -- only its owner/admins may see them.
+        membership = await _require_membership(session, room_id, user_id)
+        if membership.role not in (RoomRole.OWNER, RoomRole.ADMIN):
+            raise RoomForbiddenError
+        stmt = stmt.where(RoomInvite.room_id == room_id)
+    else:
+        # The caller's own pending invites, across all rooms.
+        stmt = stmt.where(RoomInvite.invitee_id == user_id)
+
+    stmt = stmt.order_by(RoomInvite.created_at.desc(), RoomInvite.id.desc()).offset(offset).limit(limit)
     result = await session.execute(stmt)
     rows = result.all()
     return [
@@ -389,8 +400,19 @@ async def list_room_invites(session, user_id: int, room_id: int, limit: int, off
     ]
 
 
-async def invite_user_to_room(session, user_id: int, room_id: int, invitee_id: int) -> RoomInvite:
-    await _get_room_or_404(session, room_id)
+def _serialize_invite(invite: RoomInvite, room: Room, inviter_username: str) -> dict:
+    return {
+        "id": invite.id,
+        "room_id": invite.room_id,
+        "room_name": room.name,
+        "inviter_username": inviter_username,
+        "status": invite.status,
+        "created_at": invite.created_at,
+    }
+
+
+async def invite_user_to_room(session, user_id: int, room_id: int, invitee_id: int) -> dict:
+    room = await _get_room_or_404(session, room_id)
     membership = await _require_membership(session, room_id, user_id)
 
     if membership.role not in (RoomRole.OWNER, RoomRole.ADMIN):
@@ -415,6 +437,8 @@ async def invite_user_to_room(session, user_id: int, room_id: int, invitee_id: i
     if existing is not None:
         raise RoomInviteConflictError()
 
+    inviter = await session.get(User, user_id)
+
     invite = RoomInvite(
         room_id=room_id,
         inviter_id=user_id,
@@ -424,10 +448,10 @@ async def invite_user_to_room(session, user_id: int, room_id: int, invitee_id: i
     session.add(invite)
     await session.commit()
     await session.refresh(invite)
-    return invite
+    return _serialize_invite(invite, room, inviter.username)
 
 
-async def accept_room_invite(session, user_id: int, invite_id: int) -> RoomInvite:
+async def accept_room_invite(session, user_id: int, invite_id: int) -> dict:
     invite = await session.get(RoomInvite, invite_id)
     if invite is None:
         raise RoomInviteNotFoundError()
@@ -445,7 +469,10 @@ async def accept_room_invite(session, user_id: int, invite_id: int) -> RoomInvit
     invite.status = RoomInviteStatus.ACCEPTED
     await session.commit()
     await session.refresh(invite)
-    return invite
+
+    room = await session.get(Room, invite.room_id)
+    inviter = await session.get(User, invite.inviter_id)
+    return _serialize_invite(invite, room, inviter.username)
 
 
 async def decline_room_invite(session, user_id: int, invite_id: int) -> None:

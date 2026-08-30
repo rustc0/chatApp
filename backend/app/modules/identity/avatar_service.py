@@ -14,6 +14,7 @@ from fastapi import HTTPException, UploadFile
 from app.modules.identity.service import _get_user_by_id, _serialize_user
 
 AVATAR_DIR = Path(os.getenv("AVATAR_DIR", "/app/media/avatars"))
+AVATAR_DIR.mkdir(parents=True, exist_ok=True)
 MAX_AVATAR_BYTES = 2 * 1024 * 1024
 
 ALLOWED_AVATAR_TYPES = {
@@ -32,6 +33,15 @@ def avatar_path(filename: str) -> Path:
         raise HTTPException(status_code=404, detail={"message": "Avatar not found"})
 
     return candidate
+
+
+def _delete_avatar_file(filename: str) -> None:
+    if not filename:
+        return
+    try:
+        avatar_path(filename).unlink(missing_ok=True)
+    except HTTPException:
+        pass  # nothing on disk to clean up
 
 
 async def save_avatar(*, session, user_id: int, upload: UploadFile) -> dict[str, object]:
@@ -53,7 +63,6 @@ async def save_avatar(*, session, user_id: int, upload: UploadFile) -> dict[str,
 
     user = await _get_user_by_id(session, user_id)
 
-    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"{user_id}-{secrets.token_hex(8)}{extension}"
     (AVATAR_DIR / filename).write_bytes(payload)
 
@@ -62,11 +71,7 @@ async def save_avatar(*, session, user_id: int, upload: UploadFile) -> dict[str,
     await session.commit()
     await session.refresh(user)
 
-    if previous:
-        try:
-            avatar_path(previous).unlink(missing_ok=True)
-        except HTTPException:
-            pass  # nothing on disk to clean up
+    _delete_avatar_file(previous)
 
     return _serialize_user(user)
 
@@ -79,10 +84,6 @@ async def clear_avatar(*, session, user_id: int) -> dict[str, object]:
     await session.commit()
     await session.refresh(user)
 
-    if previous:
-        try:
-            avatar_path(previous).unlink(missing_ok=True)
-        except HTTPException:
-            pass
+    _delete_avatar_file(previous)
 
     return _serialize_user(user)

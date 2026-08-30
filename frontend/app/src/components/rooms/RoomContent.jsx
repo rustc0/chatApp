@@ -1,5 +1,6 @@
 import styled from "styled-components";
 import { ProfileName } from "../layout/Sidebar";
+import { formatTimestamp } from "../../api/rooms";
 
 const PanelEmptyState = styled.div`
   display: grid;
@@ -97,19 +98,15 @@ function RoomContent({ roomChat, state, roomName }) {
 function MessageItem({ message }) {
   return (
     <MessageItemRoot>
-      <MessageAvatar>{message.username?.[0] ?? "?"}</MessageAvatar>
+      <MessageAvatar>{message.sender_username?.[0] ?? "?"}</MessageAvatar>
 
       <MessageBody>
         <MessageMeta>
-          <ProfileName>{message.username ?? "Unknown user"}</ProfileName>
-          <time>{message.createdAt}</time>
+          <ProfileName>{message.sender_username ?? "Unknown user"}</ProfileName>
+          <time>{formatTimestamp(message.sent_at)}</time>
         </MessageMeta>
 
-        <MessageContent>
-          {message.content.length < 42
-            ? message.content
-            : `${message.content.substring(0, 39)}...`}
-        </MessageContent>
+        <MessageContent>{message.content}</MessageContent>
       </MessageBody>
     </MessageItemRoot>
   );

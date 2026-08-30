@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import styled from "styled-components";
 import RoomHeader from "./RoomHeader";
 import RoomContent from "./RoomContent";
 import MessageComposer from "./MessageComposer";
 import MembersSidebar from "./MembersSidebar";
-import { getRoom } from "../../api/rooms";
+import { useRoomMessages } from "../../hooks/useRoomMessages";
 
 const RoomViewShell = styled.section`
   display: flex;
@@ -22,29 +22,7 @@ const RoomMain = styled.div`
 
 function RoomView({ roomId, roomName }) {
   const [isMembersOpen, setIsMembersOpen] = useState(false);
-  const [roomChat, setRoomChat] = useState([]);
-  const [isLoading, setIsLoading] = useState("loading");
-
-  useEffect(() => {
-    let isCanceled = false;
-    async function loadRoom() {
-      setIsLoading("loading");
-      try {
-        await getRoom(roomId);
-        if (!isCanceled) {
-          setRoomChat([]);
-          setIsLoading("success");
-        }
-      } catch (error) {
-        if (!isCanceled) setIsLoading("error");
-      }
-    }
-
-    loadRoom();
-    return () => {
-      isCanceled = true;
-    };
-  }, [roomId]);
+  const { messages, state, sending, send } = useRoomMessages(roomId);
 
   return (
     <RoomViewShell>
@@ -54,8 +32,8 @@ function RoomView({ roomId, roomName }) {
           onToggleMembers={() => setIsMembersOpen((open) => !open)}
         />
 
-        <RoomContent roomChat={roomChat} state={isLoading} roomName={roomName} />
-        <MessageComposer roomName={roomName} />
+        <RoomContent roomChat={messages} state={state} roomName={roomName} />
+        <MessageComposer roomName={roomName} onSend={send} disabled={sending} />
       </RoomMain>
 
       {isMembersOpen && <MembersSidebar roomId={roomId} />}

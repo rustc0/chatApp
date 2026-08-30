@@ -360,7 +360,7 @@ async def update_user_profile(
 	if username is not None and username != user.username:
 		if not await is_username_available(session=session, username=username):
 			raise UsernameTakenError()
-		user.username = username
+		user.username = _normalize_username(username)
 
 	if display_name is not None:
 		user.display_name = display_name

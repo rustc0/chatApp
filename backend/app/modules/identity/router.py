@@ -30,7 +30,7 @@ class UserProfileUpdateRequest(BaseModel):
 
 class UserProfileResponse(BaseModel):
 	id: int
-	display_name: str
+	display_name: str | None
 	username: str | None
 	bio: str | None
 

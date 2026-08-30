@@ -1,3 +1,4 @@
+import { useState } from "react";
 import styled from "styled-components";
 
 const MessageComposerForm = styled.form`
@@ -24,25 +25,41 @@ const MessageComposerForm = styled.form`
 		color: var(--color-accent);
 	}
 
-	button:hover {
+	button:hover:not(:disabled) {
 		background: var(--color-accent);
 		color: white;
 	}
+
+	button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
 `;
 
-function MessageComposer({ roomName }) {
-	function handleSubmit(event) {
+function MessageComposer({ roomName, onSend, disabled }) {
+	const [text, setText] = useState("");
+
+	async function handleSubmit(event) {
 	  event.preventDefault();
+
+	  const trimmed = text.trim();
+	  if (!trimmed || disabled) return;
+
+	  await onSend?.(trimmed);
+	  setText("");
 	}
 
 	return (
 	  <MessageComposerForm onSubmit={handleSubmit}>
 		<input
 		  type="text"
+		  value={text}
+		  onChange={(event) => setText(event.target.value)}
 		  placeholder={`Message #${roomName}`}
 		  aria-label={`Message #${roomName}`}
+		  disabled={disabled}
 		/>
-		<button type="submit">Send</button>
+		<button type="submit" disabled={disabled}>Send</button>
 	  </MessageComposerForm>
 	);
 	}

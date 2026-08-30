@@ -62,7 +62,10 @@ export function openRoomSocket(roomId, { onMessage, onStatus } = {}) {
       if (disposed) return;
       onStatus?.("closed");
 
-      if (event.code === 1008) {
+      // A rejected handshake (expired cookie) surfaces to the browser as an
+      // abnormal 1006 close, not the server's 1008 -- refresh on any
+      // unexpected close so a stale access token can't loop forever.
+      if (event.code !== 1000) {
         try {
           await refreshSession();
         } catch {

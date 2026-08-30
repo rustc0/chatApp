@@ -249,13 +249,18 @@ async def list_invites(
     current_user: dict[str, object] = Depends(get_current_user),
     session=Depends(get_db_session),
 ):
-    return await service.list_room_invites(
-        session=session,
-        user_id=current_user["user_id"],
-        room_id=room_id,
-        limit=100,
-        offset=0,
-    )
+    try:
+        return await service.list_room_invites(
+            session=session,
+            user_id=current_user["user_id"],
+            room_id=room_id,
+            limit=100,
+            offset=0,
+        )
+    except RoomNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Room not found")
+    except RoomForbiddenError:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin+ only")
 
 
 @router.post("/{room_id}/invites", status_code=status.HTTP_201_CREATED, response_model=RoomInviteOut)

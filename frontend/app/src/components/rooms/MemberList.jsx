@@ -10,11 +10,24 @@ const MemberListRoot = styled.ul`
   list-style: none;
 `;
 
-function MemberList({ members }) {
+function canKickMember({ currentUserId, currentUserRole, member }) {
+  if (currentUserRole !== "owner" && currentUserRole !== "admin") return false;
+  if (member.id === currentUserId) return false;
+  if (member.role === "owner") return false;
+  if (currentUserRole === "admin" && member.role === "admin") return false;
+  return true;
+}
+
+function MemberList({ members, currentUserId, currentUserRole, onKick }) {
   return (
     <MemberListRoot>
       {members.map((member) => (
-        <MemberItem key={member.id} member={member} />
+        <MemberItem
+          key={member.id}
+          member={member}
+          canKick={canKickMember({ currentUserId, currentUserRole, member })}
+          onKick={onKick}
+        />
       ))}
     </MemberListRoot>
   );

@@ -7,8 +7,10 @@ import {
   getRoomMembers,
   getRoomPendingInvites,
   inviteToRoom,
+  removeMember,
 } from "../../api/rooms";
 import { getFriendsList } from "../../api/friends";
+import { useProfileOverlay } from "../layout/ProfileOverlayContext";
 
 
 const MembersSidebarRoot = styled.aside`
@@ -141,10 +143,12 @@ const InviteButton = styled.button`
 
 
 function MembersSidebar({ roomId }) {
+  const { currentUser } = useProfileOverlay();
   const [view, setView] = useState("members");
 
   const [loading, setLoading] = useState("loading");
   const [members, setMembers] = useState([]);
+  const [kickError, setKickError] = useState(null);
 
   const [friendsLoading, setFriendsLoading] = useState("idle");
   const [friends, setFriends] = useState([]);
@@ -203,6 +207,24 @@ function MembersSidebar({ roomId }) {
     (friend) => !memberIds.has(friend.id)
   );
 
+  const currentUserRole = members.find(
+    (member) => member.id === currentUser?.id
+  )?.role;
+  const canInvite = currentUserRole === "owner" || currentUserRole === "admin";
+
+  const handleKick = async (member) => {
+    if (!window.confirm(`Remove ${member.username} from this room?`)) return;
+
+    setKickError(null);
+    try {
+      await removeMember(roomId, member.id);
+      setMembers((prev) => prev.filter((item) => item.id !== member.id));
+    } catch (error) {
+      console.error("Error removing member:", error);
+      setKickError(`Couldn't remove ${member.username}.`);
+    }
+  };
+
   const handleInvite = async (friend) => {
     setInvitingId(friend.id);
 
@@ -226,30 +248,40 @@ function MembersSidebar({ roomId }) {
             : `Friends — ${invitableFriends.length}`}
         </MembersTitle>
 
-        <ToggleButton
-          type="button"
-          onClick={() =>
-            setView(view === "members" ? "friends" : "members")
-          }
-          aria-label={
-            view === "members"
-              ? "Invite friends"
-              : "Back to members"
-          }
-        >
-          {view === "members" ? (
-            <TbUserPlus size={15} />
-          ) : (
-            <TbArrowLeft size={15} />
-          )}
-        </ToggleButton>
+        {(view !== "members" || canInvite) && (
+          <ToggleButton
+            type="button"
+            onClick={() =>
+              setView(view === "members" ? "friends" : "members")
+            }
+            aria-label={
+              view === "members"
+                ? "Invite friends"
+                : "Back to members"
+            }
+          >
+            {view === "members" ? (
+              <TbUserPlus size={15} />
+            ) : (
+              <TbArrowLeft size={15} />
+            )}
+          </ToggleButton>
+        )}
       </SidebarHeader>
 
       {view === "members" ? (
         <>
           {loading === "loading" && <p>Loading members...</p>}
           {loading === "error" && <p>Error loading members.</p>}
-          {loading === "success" && <MemberList members={members} />}
+          {kickError && <p role="alert">{kickError}</p>}
+          {loading === "success" && (
+            <MemberList
+              members={members}
+              currentUserId={currentUser?.id}
+              currentUserRole={currentUserRole}
+              onKick={handleKick}
+            />
+          )}
         </>
       ) : (
         <>
