@@ -152,6 +152,7 @@ async def get_or_create_dm(session, user_id: int, other_user_id: int) -> Room:
     result = await session.execute(stmt)
     existing = result.scalars().first()
     if existing is not None:
+        existing.peer = {"id": other_user.id, "username": other_user.username, "status": get_user_status()}
         return existing
 
     room = Room(name=None, type=RoomType.DM)
@@ -166,6 +167,7 @@ async def get_or_create_dm(session, user_id: int, other_user_id: int) -> Room:
     )
     await session.commit()
     await session.refresh(room)
+    room.peer = {"id": other_user.id, "username": other_user.username, "status": get_user_status()}
     return room
 
 

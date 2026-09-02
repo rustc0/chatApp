@@ -27,10 +27,10 @@ const PanelHeader = styled.header`
 	}
 `;
 
-function RoomHeader({ roomName, onToggleMembers }) {
+function RoomHeader({ roomName, isDm, onToggleMembers }) {
 	return (
 	  <PanelHeader>
-		<h2># {roomName}</h2>
+		<h2>{isDm ? roomName : `# ${roomName}`}</h2>
 
 		<button type="button" onClick={onToggleMembers}>
 		Members

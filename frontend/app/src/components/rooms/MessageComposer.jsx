@@ -36,8 +36,9 @@ const MessageComposerForm = styled.form`
 	}
 `;
 
-function MessageComposer({ roomName, onSend, disabled }) {
+function MessageComposer({ roomName, isDm, onSend, disabled }) {
 	const [text, setText] = useState("");
+	const label = isDm ? `Message ${roomName}` : `Message #${roomName}`;
 
 	async function handleSubmit(event) {
 	  event.preventDefault();
@@ -55,8 +56,8 @@ function MessageComposer({ roomName, onSend, disabled }) {
 		  type="text"
 		  value={text}
 		  onChange={(event) => setText(event.target.value)}
-		  placeholder={`Message #${roomName}`}
-		  aria-label={`Message #${roomName}`}
+		  placeholder={label}
+		  aria-label={label}
 		  disabled={disabled}
 		/>
 		<button type="submit" disabled={disabled}>Send</button>

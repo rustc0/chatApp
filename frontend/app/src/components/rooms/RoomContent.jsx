@@ -63,7 +63,7 @@ const MessageContent = styled.p`
   overflow-wrap: anywhere;
 `;
 
-function RoomContent({ roomChat, state, roomName }) {
+function RoomContent({ roomChat, state, roomName, isDm }) {
   return (
     <>
       {state === "loading" && (
@@ -77,7 +77,7 @@ function RoomContent({ roomChat, state, roomName }) {
           <MessageList>
             {roomChat.length === 0 ? (
               <PanelEmptyState>
-                <p>Say Hello to #{roomName}!</p>
+                <p>{isDm ? `Say hello to ${roomName}!` : `Say Hello to #${roomName}!`}</p>
               </PanelEmptyState>
             ) : (
               roomChat.map((message) => (

@@ -1,5 +1,6 @@
 import styled from "styled-components";
 import { useOpenUserPreview } from "../../hooks/useOpenUserPreview";
+import { useRoomNavigation } from "../layout/RoomNavigationContext";
 
 const DmItemRoot = styled.li`
 	display: flex;
@@ -89,10 +90,24 @@ const DmTimestamp = styled.time`
 function DmItem({ conversation }) {
 	const initial = conversation.username?.charAt(0)?.toUpperCase() || "?";
 	const openPreview = useOpenUserPreview();
+	const { navigateToRoom } = useRoomNavigation();
+
+	function openConversation() {
+		navigateToRoom({
+			id: conversation.id,
+			name: null,
+			type: "dm",
+			peer: {
+				id: conversation.userId,
+				username: conversation.username,
+				status: conversation.status,
+			},
+		});
+	}
 
 	return (
 	  <DmItemRoot>
-		<DmItemButton type="button">
+		<DmItemButton type="button" onClick={openConversation}>
 		  <DmAvatar onClick={openPreview(conversation.username)}>
 			{initial}
 			<DmStatus $online={conversation.status === "online"} aria-label={conversation.status} />

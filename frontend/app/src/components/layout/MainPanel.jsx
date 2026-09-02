@@ -6,7 +6,10 @@ function MainPanel({ activeView }) {
     return <DmView />;
   }
 
-  return <RoomView roomId={activeView.id} roomName={activeView.name} />;
+  const isDm = activeView.type === "dm";
+  const roomName = isDm ? activeView.peer?.username ?? "Direct message" : activeView.name;
+
+  return <RoomView roomId={activeView.id} roomName={roomName} isDm={isDm} />;
 }
 
 export default MainPanel;

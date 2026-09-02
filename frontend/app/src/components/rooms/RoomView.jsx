@@ -20,7 +20,7 @@ const RoomMain = styled.div`
   padding: 16px;
 `;
 
-function RoomView({ roomId, roomName }) {
+function RoomView({ roomId, roomName, isDm }) {
   const [isMembersOpen, setIsMembersOpen] = useState(false);
   const { messages, state, sending, send } = useRoomMessages(roomId);
 
@@ -29,11 +29,12 @@ function RoomView({ roomId, roomName }) {
       <RoomMain>
         <RoomHeader
           roomName={roomName}
+          isDm={isDm}
           onToggleMembers={() => setIsMembersOpen((open) => !open)}
         />
 
-        <RoomContent roomChat={messages} state={state} roomName={roomName} />
-        <MessageComposer roomName={roomName} onSend={send} disabled={sending} />
+        <RoomContent roomChat={messages} state={state} roomName={roomName} isDm={isDm} />
+        <MessageComposer roomName={roomName} isDm={isDm} onSend={send} disabled={sending} />
       </RoomMain>
 
       {isMembersOpen && <MembersSidebar roomId={roomId} />}
