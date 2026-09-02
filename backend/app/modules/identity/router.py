@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.modules.identity import avatar_service
 from app.modules.identity import service as identity_service
+from app.modules.friends import service as friends_service
 from app.database import get_db_session
 
 
@@ -33,6 +34,9 @@ class UserProfileResponse(BaseModel):
 	display_name: str | None
 	username: str | None
 	bio: str | None
+	avatar: str | None = None
+	friendship_status: str | None = None
+	friendship_id: int | None = None
 
 	class Config:
 		from_attributes = True
@@ -104,12 +108,26 @@ async def check_username(
 @router.get("/by-username", response_model=UserProfileResponse)
 async def get_user_by_username(
 	username: str,
+	current_user: dict[str, object] = Depends(identity_service.get_current_user),
 	session=Depends(get_db_session),
 ):
 	user = await identity_service.get_user_by_username(session=session, username=username)
 	if user is None:
 		raise HTTPException(status_code=404, detail={"message": "User not found"})
-	return UserProfileResponse.model_validate(user)
+
+	relationship = await friends_service.get_relationship(
+		session=session, user_id=int(current_user["user_id"]), other_id=user.id
+	)
+
+	return UserProfileResponse(
+		id=user.id,
+		display_name=user.display_name,
+		username=user.username,
+		bio=user.bio,
+		avatar=user.avatar_url or "",
+		friendship_status=relationship["status"],
+		friendship_id=relationship["friendship_id"],
+	)
 
 
 @router.put("/me")

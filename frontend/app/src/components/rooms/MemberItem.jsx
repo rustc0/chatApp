@@ -1,5 +1,6 @@
 import styled from "styled-components";
 import { TbUserX } from "react-icons/tb";
+import { useOpenUserPreview } from "../../hooks/useOpenUserPreview";
 
 const MemberItemRoot = styled.li`
 	display: flex;
@@ -20,6 +21,37 @@ const MemberStatus = styled.span`
 	flex-shrink: 0;
 	border-radius: 50%;
 	background: ${({ $online }) => ($online ? "var(--color-online)" : "var(--color-text)")};
+`;
+
+const MemberIdentity = styled.button`
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	flex: 1;
+
+	border: 0;
+	background: transparent;
+	padding: 0;
+
+	cursor: pointer;
+
+	&:hover span {
+		text-decoration: underline;
+	}
+`;
+
+const MemberAvatar = styled.span`
+	display: grid;
+	width: 22px;
+	height: 22px;
+	flex-shrink: 0;
+	place-items: center;
+	border-radius: 50%;
+	background: var(--color-surface-hover);
+	color: var(--color-text);
+	font-size: 11px;
+	font-weight: 700;
 `;
 
 const MemberName = styled.span`
@@ -58,11 +90,16 @@ const KickButton = styled.button`
 `;
 
 function MemberItem({ member, canKick, onKick }) {
+	const openPreview = useOpenUserPreview();
+
 	return (
 	  <MemberItemRoot>
 		<MemberStatus $online={member.status === "online"} aria-label={member.status} />
 
-		<MemberName>{member.username}</MemberName>
+		<MemberIdentity type="button" onClick={openPreview(member.username)}>
+		  <MemberAvatar>{member.username?.charAt(0)?.toUpperCase() || "?"}</MemberAvatar>
+		  <MemberName>{member.username}</MemberName>
+		</MemberIdentity>
 
 		{(member.role === "owner" || member.role === "admin") && (
 		  <MemberRole>{member.role}</MemberRole>

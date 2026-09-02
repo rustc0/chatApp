@@ -1,4 +1,5 @@
 import styled from "styled-components";
+import { useOpenUserPreview } from "../../hooks/useOpenUserPreview";
 
 const DmItemRoot = styled.li`
 	display: flex;
@@ -34,6 +35,7 @@ const DmAvatar = styled.div`
 	border-radius: 50%;
 	background: var(--color-accent);
 	font-weight: bold;
+	cursor: pointer;
 `;
 
 const DmStatus = styled.span`
@@ -63,6 +65,12 @@ const DmDetails = styled.div`
 
 	strong {
 		color: var(--color-text-muted);
+		cursor: pointer;
+		width: fit-content;
+
+		&:hover {
+			text-decoration: underline;
+		}
 	}
 
 	span {
@@ -79,18 +87,19 @@ const DmTimestamp = styled.time`
 `;
 
 function DmItem({ conversation }) {
-	const initial = conversation.username.charAt(0).toUpperCase();
+	const initial = conversation.username?.charAt(0)?.toUpperCase() || "?";
+	const openPreview = useOpenUserPreview();
 
 	return (
 	  <DmItemRoot>
 		<DmItemButton type="button">
-		  <DmAvatar>
+		  <DmAvatar onClick={openPreview(conversation.username)}>
 			{initial}
 			<DmStatus $online={conversation.status === "online"} aria-label={conversation.status} />
 		  </DmAvatar>
 
 		  <DmDetails>
-			<strong>{conversation.username}</strong>
+			<strong onClick={openPreview(conversation.username)}>{conversation.username}</strong>
 			<span>
 				{conversation.lastMessage.length < 42 ? conversation.lastMessage : `${conversation.lastMessage.substring(0, 39)}...`}
 			</span>

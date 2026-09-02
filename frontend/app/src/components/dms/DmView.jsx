@@ -1,7 +1,7 @@
 import DmList from "./DmList";
 import { useEffect, useState } from "react";
 import styled from "styled-components";
-import { getRooms } from "../../api/rooms";
+import { getRooms, toConversation } from "../../api/rooms";
 
 const DmViewShell = styled.section`
   display: flex;
@@ -30,7 +30,7 @@ function DmView() {
     async function loadMessages() {
       try {
         const data = await getRooms();
-        const dms = (data || []).filter((r) => r.type === "dm");
+        const dms = (data || []).filter((r) => r.type === "dm").map(toConversation);
         setConversations(dms);
         setLoading("success");
       } catch (error) {

@@ -4,6 +4,8 @@ import Sidebar from "./Sidebar";
 import MainPanel from "./MainPanel";
 import ProfileOverlay from "./ProfileOverlay";
 import { ProfileOverlayProvider, useProfileOverlay } from "./ProfileOverlayContext";
+import { RoomNavigationProvider } from "./RoomNavigationContext";
+import ProfilePreviewPopover from "../profile/ProfilePreviewPopover";
 
 const AppShellRoot = styled.div`
   display: flex;
@@ -33,7 +35,7 @@ function AppShellContent({ onLogout }) {
   const [isDirectMessages, setIsDirectMessages] = useState(true);
   const [activeRoomId, setActiveRoomId] = useState(null);
 
-  const { profile, closeProfile } = useProfileOverlay();
+  const { profile, closeProfile, previewUser, closeUserPreview } = useProfileOverlay();
 
   function handleRoomChange(roomId) {
     setActiveRoomId(roomId);
@@ -41,7 +43,7 @@ function AppShellContent({ onLogout }) {
   }
 
   return (
-    <>
+    <RoomNavigationProvider navigateToRoom={handleRoomChange}>
       <AppShellRoot>
         <Sidebar
           isDirectMessages={isDirectMessages}
@@ -64,7 +66,14 @@ function AppShellContent({ onLogout }) {
           onClose={closeProfile}
         />
       )}
-    </>
+
+      {previewUser && (
+        <ProfilePreviewPopover
+          target={previewUser}
+          onClose={closeUserPreview}
+        />
+      )}
+    </RoomNavigationProvider>
   );
 }
 

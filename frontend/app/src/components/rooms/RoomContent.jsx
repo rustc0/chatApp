@@ -1,6 +1,7 @@
 import styled from "styled-components";
 import { ProfileName } from "../layout/Sidebar";
 import { formatTimestamp } from "../../api/rooms";
+import { useOpenUserPreview } from "../../hooks/useOpenUserPreview";
 
 const PanelEmptyState = styled.div`
   display: grid;
@@ -40,6 +41,7 @@ const MessageAvatar = styled.div`
   border: 1px solid var(--color-text);
   border-radius: 50%;
   place-items: center;
+  cursor: pointer;
 `;
 
 const MessageBody = styled.div`
@@ -96,13 +98,23 @@ function RoomContent({ roomChat, state, roomName }) {
 }
 
 function MessageItem({ message }) {
+  const openPreview = useOpenUserPreview();
+  const canPreview = Boolean(message.sender_username);
+
   return (
     <MessageItemRoot>
-      <MessageAvatar>{message.sender_username?.[0] ?? "?"}</MessageAvatar>
+      <MessageAvatar onClick={canPreview ? openPreview(message.sender_username) : undefined}>
+        {message.sender_username?.[0] ?? "?"}
+      </MessageAvatar>
 
       <MessageBody>
         <MessageMeta>
-          <ProfileName>{message.sender_username ?? "Unknown user"}</ProfileName>
+          <ProfileName
+            onClick={canPreview ? openPreview(message.sender_username) : undefined}
+            style={canPreview ? { cursor: "pointer" } : undefined}
+          >
+            {message.sender_username ?? "Unknown user"}
+          </ProfileName>
           <time>{formatTimestamp(message.sent_at)}</time>
         </MessageMeta>
 

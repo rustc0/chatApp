@@ -138,6 +138,30 @@ async def cancel_friend_request(session: AsyncSession, user_id: int, request_id:
     await session.commit()
 
 
+async def get_relationship(session: AsyncSession, user_id: int, other_id: int) -> dict:
+    if user_id == other_id:
+        return {"status": "self", "friendship_id": None}
+
+    result = await session.execute(
+        sa.select(Friendship).where(
+            sa.or_(
+                sa.and_(Friendship.sender_id == user_id, Friendship.receiver_id == other_id),
+                sa.and_(Friendship.sender_id == other_id, Friendship.receiver_id == user_id),
+            )
+        )
+    )
+    friendship = result.scalars().first()
+
+    if friendship is None:
+        return {"status": "none", "friendship_id": None}
+
+    if friendship.status == "accepted":
+        return {"status": "friends", "friendship_id": friendship.id}
+
+    status = "pending_outgoing" if friendship.sender_id == user_id else "pending_incoming"
+    return {"status": status, "friendship_id": friendship.id}
+
+
 async def delete_friend(session: AsyncSession, user_id: int, friend_id: int) -> None:
     result = await session.execute(
         sa.select(Friendship).where(
