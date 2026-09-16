@@ -1,3 +1,6 @@
+# Production stack. Unlike docker-compose.yml this builds nothing and mounts no
+# source: every service runs a prebuilt image from GHCR, pinned by IMAGE_TAG.
+# Deployed to /opt/app by the `app` role in the app-infra repo.
 services:
   db:
     container_name: chatapp-db
@@ -7,11 +10,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-    ports:
-      - "${POSTGRES_PORT}:5432"
+    # No `ports:` on purpose. Publishing 5432 would expose Postgres to the
+    # internet: Docker writes its own iptables rules and bypasses UFW entirely.
+    # backend reaches it over chatapp-net as `db`.
     volumes:
       - db-data:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
@@ -22,22 +25,17 @@ services:
 
   backend:
     container_name: chatapp-backend
-    build:
-      context: ./backend
+    image: ${REGISTRY}/chatapp-backend:${IMAGE_TAG}
     restart: unless-stopped
-    # The image defaults to plain uvicorn; reload only makes sense here, where
-    # ./backend is mounted over /app.
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     environment:
       JWT_SECRET: ${JWT_SECRET}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_HOST: db
-      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_PORT: 5432
       AVATAR_DIR: /app/media/avatars
     volumes:
-      - ./backend:/app
       - avatars:/app/media/avatars
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
@@ -52,9 +50,7 @@ services:
 
   frontend:
     container_name: chatapp-frontend
-    build:
-      context: ./frontend
-      target: prod
+    image: ${REGISTRY}/chatapp-frontend:${IMAGE_TAG}
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ || exit 1"]
@@ -66,8 +62,7 @@ services:
 
   gateway:
     container_name: chatapp-gateway
-    build:
-      context: ./gateway
+    image: ${REGISTRY}/chatapp-gateway:${IMAGE_TAG}
     restart: unless-stopped
     depends_on:
       frontend:
@@ -77,10 +72,10 @@ services:
     ports:
       - "${GATEWAY_HTTP_PORT}:80"
       - "${GATEWAY_HTTPS_PORT}:443"
+    # nginx.conf is baked into the image. The only thing worth persisting is the
+    # self-signed cert entrypoint.sh generates, or every deploy issues a new one.
     volumes:
-      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./gateway/certs:/etc/nginx/certs
-      - ./gateway/gen-cert.sh:/usr/local/bin/gen-cert.sh:ro
+      - gateway-certs:/etc/nginx/conf
     healthcheck:
       test: ["CMD", "curl", "-fsSk", "https://127.0.0.1/api/health"]
       interval: 10s
@@ -93,6 +88,9 @@ volumes:
   db-data:
     name: chatapp-db-data
   avatars:
+    name: chatapp-avatars
+  gateway-certs:
+    name: chatapp-gateway-certs
 
 networks:
   chatapp-net:

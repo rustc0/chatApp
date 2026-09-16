@@ -25,6 +25,9 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    # The image defaults to plain uvicorn; reload only makes sense here, where
+    # ./backend is mounted over /app.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
