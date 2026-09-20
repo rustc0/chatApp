@@ -10,6 +10,7 @@ const RoomViewShell = styled.section`
   display: flex;
   height: 100%;
   min-width: 0;
+  background: var(--bg-base);
 `;
 
 const RoomMain = styled.div`
@@ -17,7 +18,6 @@ const RoomMain = styled.div`
   flex: 1;
   flex-direction: column;
   min-width: 0;
-  padding: 16px;
 `;
 
 function RoomView({ roomId, roomName, isDm }) {

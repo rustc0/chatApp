@@ -17,7 +17,7 @@ const MainContent = styled.main`
   position: relative;
   min-width: 0;
   flex: 1;
-  background: var(--color-bg);
+  background: var(--bg-base);
 
   &::before {
     position: absolute;
@@ -27,7 +27,7 @@ const MainContent = styled.main`
     width: 42px;
     content: "";
     pointer-events: none;
-    background: linear-gradient(to right, rgba(0, 0, 0, 0.1), transparent);
+    background: linear-gradient(to right, rgba(0, 0, 0, 0.18), transparent);
   }
 `;
 
@@ -77,9 +77,9 @@ function AppShellContent({ onLogout }) {
   );
 }
 
-function AppShell({ onLogout }) {
+function AppShell({ user, onLogout }) {
   return (
-    <ProfileOverlayProvider>
+    <ProfileOverlayProvider user={user}>
       <AppShellContent onLogout={onLogout} />
     </ProfileOverlayProvider>
   );

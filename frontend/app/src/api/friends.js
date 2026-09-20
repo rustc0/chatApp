@@ -1,3 +1,4 @@
+import { requireEndpoint } from "./features";
 import { buildQuery, request } from "./http";
 
 const FRIENDS = "/api/friends";
@@ -17,6 +18,16 @@ export async function getFriendRequests({ limit = 50, offset = 0 } = {}) {
     {},
     "Failed to fetch friend requests",
   );
+}
+
+/**
+ * Requests *you* sent that are still pending. GET /friends/requests only
+ * answers with incoming ones, so this is gated off until the backend grows a
+ * direction — the UI hides the tab rather than calling it (see features.js).
+ */
+export async function getSentFriendRequests() {
+  requireEndpoint("sentFriendRequests");
+  return [];
 }
 
 export async function sendFriendRequest(friendId) {

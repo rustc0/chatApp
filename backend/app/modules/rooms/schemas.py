@@ -89,6 +89,9 @@ class RoomInviteOut(BaseModel):
     id: int
     room_id: int
     room_name: str | None
+    # The invitee, so a room's pending invites can be matched against a user
+    # list (the member sidebar marks friends who were already invited).
+    user_id: int
     inviter_username: str
     status: str
     created_at: datetime

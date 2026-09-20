@@ -1,24 +1,31 @@
 import DmList from "./DmList";
 import { useEffect, useState } from "react";
 import styled from "styled-components";
-import { getRooms, toConversation } from "../../api/rooms";
+import { TbMessageCircle } from "react-icons/tb";
+import { listDmConversations } from "../../api/rooms";
 
 const DmViewShell = styled.section`
   display: flex;
   flex-direction: column;
   height: 100%;
   min-width: 0;
-  padding: 16px;
+  padding: var(--space-4);
+  background: var(--bg-base);
 `;
 
 const PanelHeader = styled.header`
-  padding: 0 16px;
-  border-bottom: 1px solid var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
 
   h2 {
-    transform: translateY(-8px);
-    margin: 10px 0;
-    font-size: 16px;
+    margin: 0;
+    color: var(--text-primary);
+    font-size: var(--text-lg);
+    font-weight: 600;
   }
 `;
 
@@ -29,9 +36,7 @@ function DmView() {
   useEffect(() => {
     async function loadMessages() {
       try {
-        const data = await getRooms();
-        const dms = (data || []).filter((r) => r.type === "dm").map(toConversation);
-        setConversations(dms);
+        setConversations(await listDmConversations());
         setLoading("success");
       } catch (error) {
         console.error(error);
@@ -44,6 +49,7 @@ function DmView() {
   return (
     <DmViewShell>
       <PanelHeader>
+        <TbMessageCircle size={20} />
         <h2>Direct Messages</h2>
       </PanelHeader>
 

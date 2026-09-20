@@ -1,12 +1,13 @@
 import { useProfileOverlay } from "../components/layout/ProfileOverlayContext";
 
+/** openPreview({ id, username }) -> click handler. The popover loads by id. */
 export function useOpenUserPreview() {
   const { openUserPreview } = useProfileOverlay();
 
-  return (username) => (e) => {
-    if (!username) return;
+  return (person) => (e) => {
+    if (!person?.id) return;
 
     e.stopPropagation();
-    openUserPreview(username, e.currentTarget.getBoundingClientRect());
+    openUserPreview(person, e.currentTarget.getBoundingClientRect());
   };
 }

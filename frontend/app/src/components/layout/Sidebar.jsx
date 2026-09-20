@@ -1,18 +1,20 @@
 import { useEffect, useState } from "react";
 import styled from "styled-components";
-import { HiArrowLeftStartOnRectangle } from "react-icons/hi2";
-import { IoMdAdd } from "react-icons/io";
+import { TbHash, TbLogout, TbMessageCircle, TbPlus } from "react-icons/tb";
 import { useProfileOverlay } from "./ProfileOverlayContext";
 import { getRooms, createRoom } from "../../api/rooms";
 import CreateRoomInput from "./CreateRoomInput";
+import { useAvatarUrl } from "../../hooks/useAvatarUrl";
+import { Avatar, IconButton, InlineError, StatusText } from "../ui";
 
 const SidebarRoot = styled.aside`
   display: flex;
   flex-direction: column;
   width: 280px;
   flex-shrink: 0;
-  padding: 16px;
-  background: var(--color-bg);
+  padding: var(--space-4);
+  border-right: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
 
   @media (max-width: 700px) {
     width: 76px;
@@ -21,14 +23,16 @@ const SidebarRoot = styled.aside`
 `;
 
 const SidebarHeaderBox = styled.div`
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--color-text);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
 `;
 
 const SidebarTitle = styled.h1`
   margin: 0;
-  font-size: 20px;
-  color: var(--color-accent);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--accent-500);
 
   @media (max-width: 700px) {
     display: none;
@@ -36,16 +40,20 @@ const SidebarTitle = styled.h1`
 `;
 
 const SidebarSection = styled.section`
-  padding-top: 20px;
+  padding-top: var(--space-5);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 `;
 
 const SectionTitleRow = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: var(--color-text-muted);
-  font-size: 13px;
-  font-weight: bold;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 
   @media (max-width: 700px) {
@@ -55,83 +63,81 @@ const SectionTitleRow = styled.div`
   }
 `;
 
-const SectionActionButton = styled.button`
-  border: 0;
-  background: transparent;
-  color: var(--color-text-muted);
-  font-size: 20px;
-  &:hover {
-    color: var(--color-accent);
-  }
-`;
-
-const StatusMessage = styled.p`
-  margin: 8px 0 0;
-  color: var(--color-text-muted);
-`;
-
 const RoomListNav = styled.nav`
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 8px;
+  gap: 2px;
+  margin-top: var(--space-2);
+  overflow-y: auto;
+  min-height: 0;
 `;
 
-const SidebarItemButton = styled.button`
+/** Shared shape for the room rows and the Direct Messages entry. */
+const NavItemButton = styled.button`
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   width: 100%;
   border: 0;
-  border-radius: 4px;
-  padding: 8px;
-  background: ${({ $active }) => ($active ? "var(--color-surface-hover)" : "transparent")};
-  color: var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) 10px;
+  background: ${({ $active }) => ($active ? "var(--accent-soft)" : "transparent")};
+  color: ${({ $active }) => ($active ? "var(--text-primary)" : "var(--text-secondary)")};
+  font-size: var(--text-md);
+  font-weight: ${({ $active }) => ($active ? 600 : 500)};
   text-align: left;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+
+  /* Accent bar marking the active entry. */
+  &::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 3px;
+    height: ${({ $active }) => ($active ? "60%" : "0")};
+    border-radius: var(--radius-pill);
+    background: var(--accent-500);
+    transform: translateY(-50%);
+    transition: height var(--dur) var(--ease);
+  }
 
   &:hover {
-    color: var(--color-accent);
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  svg {
+    flex-shrink: 0;
+    color: var(--text-tertiary);
+  }
+
+  &:hover svg,
+  &[data-active="true"] svg {
+    color: var(--accent-400);
+  }
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   @media (max-width: 700px) {
-    display: block;
-    height: 40px;
-    padding: 0;
-    text-align: center;
-    font-size: 0;
+    justify-content: center;
+    padding: 10px 0;
 
-    &::first-letter {
-      font-size: 18px;
-    }
-  }
-`;
-
-const DmButton = styled.button`
-  width: 100%;
-  border: 0;
-  border-radius: 4px;
-  padding: 8px;
-  background: ${({ $active }) => ($active ? "var(--color-accent)" : "transparent")};
-  color: var(--color-text-muted);
-  text-align: left;
-  font-weight: bold;
-
-  &:hover {
-    background: var(--color-accent);
-  }
-
-  @media (max-width: 700px) {
-    display: block;
-    height: 40px;
-    padding: 0;
-    text-align: center;
-    font-size: 0;
-
-    &::first-letter {
-      font-size: 18px;
+    span {
+      display: none;
     }
   }
 `;
 
 const DirectMessagesSection = styled.section`
-  padding-top: 20px;
+  padding-top: var(--space-4);
 `;
 
 const ProfilePreviewBox = styled.div`
@@ -139,8 +145,8 @@ const ProfilePreviewBox = styled.div`
   align-items: center;
   gap: 10px;
   margin-top: auto;
-  padding: 18px;
-  border-top: 1px solid var(--color-text);
+  padding: var(--space-4) var(--space-2) var(--space-1);
+  border-top: 1px solid var(--border-subtle);
 
   strong,
   span {
@@ -148,61 +154,34 @@ const ProfilePreviewBox = styled.div`
   }
 
   span {
-    color: var(--color-text-muted);
-    font-size: 12px;
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
   }
 
   @media (max-width: 700px) {
     justify-content: center;
 
-    > div:last-child {
+    > div:last-of-type {
       display: none;
     }
   }
 `;
 
-const Avatar = styled.div`
-  display: grid;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  place-items: center;
-  background: var(--color-accent);
-  font-weight: bold;
+const ProfileIdentity = styled.div`
+  min-width: 0;
 `;
 
 export const ProfileName = styled.button`
   border: 0;
+  padding: 0;
   background: transparent;
-  color: var(--color-text);
-  font-weight: bold;
+  color: var(--text-primary);
+  font-weight: 600;
   text-align: left;
-  &:hover {
-    color: var(--color-text-muted);    
-  }
-`;
-
-const LogoutButton = styled.button`
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  width: 2rem;
-  height: 2rem;
-  border: none;
-  border-radius: 10%;
-  background: transparent;
-  color: var(--color-text);
-  cursor: pointer;
-
-  svg {
-    width: 1.2rem;
-    height: 1.2rem;
-  }
+  transition: color var(--dur-fast) var(--ease);
 
   &:hover {
-    color: var(--color-accent);
+    color: var(--accent-400);
   }
 `;
 
@@ -217,6 +196,7 @@ function Sidebar({
   const [rooms, setRooms] = useState([]);
   const [loaded, setLoaded] = useState("loading");
   const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState(null);
 
   useEffect(() => {
     async function loadRooms() {
@@ -234,6 +214,8 @@ function Sidebar({
   }, [roomsRefreshTick]);
 
   async function handleCreateRoom(name) {
+    setCreateError(null);
+
     try {
       const newRoom = await createRoom(name);
       setRooms((prev) => [newRoom, ...prev]);
@@ -241,14 +223,13 @@ function Sidebar({
       if (onRoomChange) onRoomChange(newRoom);
     } catch (err) {
       console.error("Failed to create room:", err);
-      window.alert(err?.message || "Failed to create room");
+      setCreateError(err?.message || "Failed to create room");
     }
   }
 
   return (
     <SidebarRoot>
       <SidebarHeader />
-
 
       <DirectMessagesButton
         isDirectMessages={isDirectMessages}
@@ -261,10 +242,17 @@ function Sidebar({
         activeRoomId={activeRoomId}
         onRoomChange={onRoomChange}
         state={loaded}
-        onCreate={() => setCreateOpen((s) => !s)}
+        onCreate={() => {
+          setCreateError(null);
+          setCreateOpen((s) => !s);
+        }}
         createOpen={createOpen}
         onSubmitCreate={handleCreateRoom}
-        onCancelCreate={() => setCreateOpen(false)}
+        onCancelCreate={() => {
+          setCreateOpen(false);
+          setCreateError(null);
+        }}
+        createError={createError}
       />
 
       <ProfilePreview onLogout={onLogout} />
@@ -275,14 +263,14 @@ function Sidebar({
 function SidebarHeader() {
   return (
     <SidebarHeaderBox>
-      <SidebarTitle>AppName</SidebarTitle>
+      <SidebarTitle>FT_TRANSCENDENCE</SidebarTitle>
     </SidebarHeaderBox>
   );
 }
 
 function RoomsSection({
   rooms, isDirectMessages, activeRoomId, onRoomChange, state,
-  onCreate, createOpen, onSubmitCreate, onCancelCreate,
+  onCreate, createOpen, onSubmitCreate, onCancelCreate, createError,
 }) {
   return (
     <SidebarSection>
@@ -299,12 +287,14 @@ function RoomsSection({
         />
       )}
 
+      {createError && <InlineError role="alert">{createError}</InlineError>}
+
       {state === "loading" && (
-        <StatusMessage>Loading rooms...</StatusMessage>
+        <StatusText>Loading rooms...</StatusText>
       )}
 
       {state === "error" && (
-        <StatusMessage>Error loading rooms.</StatusMessage>
+        <InlineError>Error loading rooms.</InlineError>
       )}
 
       <RoomListNav aria-label="Rooms">
@@ -325,36 +315,55 @@ function SectionTitle({ title, actionLabel, onCreate }) {
   return (
     <SectionTitleRow>
       <span>{title}</span>
-      <SectionActionButton type="button" aria-label={actionLabel} onClick={onCreate}>
-        <IoMdAdd />
-      </SectionActionButton>
+      <IconButton
+        type="button"
+        $size={26}
+        aria-label={actionLabel}
+        title={actionLabel}
+        onClick={onCreate}
+      >
+        <TbPlus size={18} />
+      </IconButton>
     </SectionTitleRow>
   );
 }
 
 function RoomButton({ room, active, onClick }) {
   return (
-    <SidebarItemButton type="button" $active={active} onClick={onClick}>
-      # {room.name}
-    </SidebarItemButton>
+    <NavItemButton
+      type="button"
+      $active={active}
+      data-active={active}
+      onClick={onClick}
+      title={room.name}
+    >
+      <TbHash size={18} />
+      <span>{room.name}</span>
+    </NavItemButton>
   );
 }
 
 function DirectMessagesButton({ isDirectMessages, onDirectMessages }) {
   return (
     <DirectMessagesSection>
-      <DmButton
+      <NavItemButton
+        type="button"
         $active={isDirectMessages}
+        data-active={isDirectMessages}
         onClick={onDirectMessages}
+        title="Direct Messages"
       >
-        Direct Messages
-      </DmButton>
+        <TbMessageCircle size={18} />
+        <span>Direct Messages</span>
+      </NavItemButton>
     </DirectMessagesSection>
   );
 }
 
 function ProfilePreview({ onLogout }) {
   const { currentUser, openProfile } = useProfileOverlay();
+  const { avatarUrl } = useAvatarUrl(currentUser?.avatar);
+  const name = currentUser?.display_name || currentUser?.username;
 
   function openPrfl() {
     openProfile();
@@ -362,16 +371,22 @@ function ProfilePreview({ onLogout }) {
 
   return (
     <ProfilePreviewBox>
-      <Avatar>{currentUser?.username?.charAt(0)}</Avatar>
+      <Avatar src={avatarUrl} name={name} $size={36} />
 
-      <div>
-        <ProfileName onClick={openPrfl} >
-          {currentUser?.username}</ProfileName>
-        <span>Online</span>
-      </div>
-      <LogoutButton onClick={onLogout} >
-        <HiArrowLeftStartOnRectangle />
-      </LogoutButton>
+      <ProfileIdentity>
+        <ProfileName onClick={openPrfl}>{name}</ProfileName>
+        <span>@{currentUser?.username}</span>
+      </ProfileIdentity>
+
+      <IconButton
+        type="button"
+        onClick={onLogout}
+        aria-label="Log out"
+        title="Log out"
+        style={{ marginLeft: "auto" }}
+      >
+        <TbLogout size={18} />
+      </IconButton>
     </ProfilePreviewBox>
   );
 }

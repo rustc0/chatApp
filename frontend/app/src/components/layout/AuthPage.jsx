@@ -1,127 +1,107 @@
 import styled from "styled-components";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { TbEye, TbEyeOff } from "react-icons/tb";
 import { loginUser, registerUser } from "../../api/authentication.js";
+import {
+  Button,
+  Card as UICard,
+  IconButton,
+  Input as UIInput,
+} from "../ui";
 
 export const Container = styled.div`
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-bg);
-  padding: 24px;
+  background:
+    radial-gradient(
+      900px circle at 50% -10%,
+      var(--accent-soft),
+      transparent 60%
+    ),
+    var(--bg-base);
+  padding: var(--space-5);
 `;
 
-export const Card = styled.div`
+export const Card = styled(UICard)`
   width: 100%;
   max-width: 420px;
-  background: #202324;
-  border: 1px solid #161819;
-  border-radius: 16px;
-  padding: 32px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  padding: var(--space-6);
 `;
 
 export const Logo = styled.div`
   text-align: center;
-  font-size: 20px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  letter-spacing: 2px;
-  color: var(--color-text-muted);
-  margin-bottom: 16px;
+  letter-spacing: 0.18em;
+  color: var(--accent-500);
+  margin-bottom: var(--space-4);
 `;
 
 export const Title = styled.h1`
   text-align: center;
   font-size: 24px;
   font-weight: 700;
-  color: var(--color-text-muted);
-  margin-bottom: 6px;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  margin: 0 0 6px;
 `;
 
 export const Subtitle = styled.p`
   text-align: center;
-  font-size: 13px;
-  color: var(--color-text);
-  margin-bottom: 22px;
-  line-height: 1.4;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 0 0 22px;
+  line-height: 1.5;
 `;
 
 export const Form = styled.form`
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 `;
 
-export const Input = styled.input`
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: var(--color-bg);
-  color: var(--color-text-muted);
-  outline: none;
-  transition: 0.2s ease;
+export const Input = UIInput;
 
-  &::placeholder {
-    color: var(--color-text);
+const PasswordWrap = styled.div`
+  position: relative;
+  display: flex;
+
+  input {
+    padding-right: 44px;
   }
 
-  &:focus {
-    border-color: var(--color-accent);
+  button {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    transform: translateY(-50%);
   }
 `;
 
-export const PrimaryButton = styled.button`
+export const PrimaryButton = styled(Button)`
   margin-top: 6px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: none;
-  background: var(--color-accent);
-  color: white;
-  font-weight: 600;
-  cursor: pointer;
-  transition: 0.15s ease;
-
-  &:hover {
-    filter: brightness(1.1);
-    transform: translateY(-1px);
-  }
-
-  &:active {
-    transform: translateY(0);
-  }
-`;
-
-export const TextButton = styled.button`
-  margin-top: 14px;
-  background: none;
-  border: none;
-  color: var(--color-text);
-  font-size: 13px;
-  cursor: pointer;
-
-  &:hover {
-    color: var(--color-text-muted);
-  }
 `;
 
 export const Footer = styled.div`
   margin-top: 18px;
   text-align: center;
-  font-size: 13px;
-  color: var(--color-text);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
 `;
 
 export const ErrorText = styled.p`
-  margin-top: -2px;
+  margin: -2px 0 0;
   min-height: 18px;
-  font-size: 13px;
-  color: #ff8a8a;
+  font-size: var(--text-sm);
+  color: var(--danger);
 `;
 
 export const Accent = styled.span`
   margin-left: 6px;
-  color: var(--color-accent);
+  color: var(--accent-400);
   cursor: pointer;
   font-weight: 600;
 
@@ -130,13 +110,39 @@ export const Accent = styled.span`
   }
 `;
 
+/** Password field with a show/hide toggle. */
+function PasswordInput({ placeholder, value, onChange }) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <PasswordWrap>
+      <Input
+        type={visible ? "text" : "password"}
+        placeholder={placeholder}
+        required
+        value={value}
+        onChange={onChange}
+      />
+      <IconButton
+        type="button"
+        $size={30}
+        onClick={() => setVisible((shown) => !shown)}
+        aria-label={visible ? "Hide password" : "Show password"}
+        title={visible ? "Hide password" : "Show password"}
+      >
+        {visible ? <TbEyeOff size={18} /> : <TbEye size={18} />}
+      </IconButton>
+    </PasswordWrap>
+  );
+}
+
 function LoginView({ setView, onLogin, values, onChange, error, loading }) {
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
-	e.preventDefault();
-	await onLogin(values.email, values.password);
-	navigate("/app");
+    e.preventDefault();
+    await onLogin(values.email, values.password);
+    navigate("/app");
   };
 
   return (
@@ -151,24 +157,18 @@ function LoginView({ setView, onLogin, values, onChange, error, loading }) {
           value={values.email}
           onChange={(e) => onChange("email", e.target.value)}
         />
-        <Input
-          type="password"
+        <PasswordInput
           placeholder="Password"
-          required
           value={values.password}
           onChange={(e) => onChange("password", e.target.value)}
         />
 
         <ErrorText>{error}</ErrorText>
 
-        <PrimaryButton type="submit" disabled={loading}>
+        <PrimaryButton type="submit" $full disabled={loading}>
           {loading ? "Logging in..." : "Login"}
         </PrimaryButton>
       </Form>
-
-      <TextButton type="button" onClick={() => setView("forgot")}>
-        Forgot Password?
-      </TextButton>
 
       <Footer>
         Don't have an account?
@@ -182,9 +182,9 @@ function SignupView({ setView, onSignup, values, onChange, error, loading }) {
   const navigate = useNavigate();
 
   const handleSignup = async (e) => {
-	e.preventDefault();
-	await onSignup(values.username, values.email, values.password, values.confirmPassword);
-	navigate("/app");
+    e.preventDefault();
+    await onSignup(values.username, values.email, values.password, values.confirmPassword);
+    navigate("/app");
   };
 
   return (
@@ -205,50 +205,26 @@ function SignupView({ setView, onSignup, values, onChange, error, loading }) {
           value={values.email}
           onChange={(e) => onChange("email", e.target.value)}
         />
-        <Input
-          type="password"
+        <PasswordInput
           placeholder="Password"
-          required
           value={values.password}
           onChange={(e) => onChange("password", e.target.value)}
         />
-        <Input
-          type="password"
+        <PasswordInput
           placeholder="Confirm Password"
-          required
           value={values.confirmPassword}
           onChange={(e) => onChange("confirmPassword", e.target.value)}
         />
 
         <ErrorText>{error}</ErrorText>
 
-        <PrimaryButton type="submit" disabled={loading}>
+        <PrimaryButton type="submit" $full disabled={loading}>
           {loading ? "Creating..." : "Create Account"}
         </PrimaryButton>
       </Form>
 
       <Footer>
         Already have an account?
-        <Accent onClick={() => setView("login")}>Login</Accent>
-      </Footer>
-    </>
-  );
-}
-
-function ForgotView({ setView }) {
-  return (
-    <>
-      <Subtitle>
-        Enter your email and we'll send you a reset link.
-      </Subtitle>
-
-      <Form>
-        <Input type="email" placeholder="Email" required />
-        <PrimaryButton type="submit">Send Reset Link</PrimaryButton>
-      </Form>
-
-      <Footer>
-        Remember your password?
         <Accent onClick={() => setView("login")}>Login</Accent>
       </Footer>
     </>
@@ -278,14 +254,13 @@ function AuthPage( { onLogin } ) {
     setError("");
 
     try {
-      await loginUser(email, password);
-      onLogin();
+      onLogin(await loginUser(email, password));
     } catch (err) {
-		if (err?.response?.status >= 500) {
-			setError("Something went wrong. Please try again later.");
-		} else {
-			setError(err.message);
-		}
+      if (err?.status >= 500) {
+        setError("Something went wrong. Please try again later.");
+      } else {
+        setError(err.message);
+      }
       throw err;
     } finally {
       setLoading(false);
@@ -302,10 +277,9 @@ function AuthPage( { onLogin } ) {
     setError("");
 
     try {
-      await registerUser(username, email, password);
-      onLogin();
+      onLogin(await registerUser(username, email, password));
     } catch (err) {
-      if (err?.response?.status >= 500) {
+      if (err?.status >= 500) {
         setError("Something went wrong. Please try again later.");
       } else {
         setError(err.message);
@@ -329,8 +303,6 @@ function AuthPage( { onLogin } ) {
             loading={loading}
           />
         );
-      // case "forgot":
-      //   return <ForgotView setView={setView} />;
       default:
         return (
           <LoginView
@@ -348,13 +320,9 @@ function AuthPage( { onLogin } ) {
   return (
     <Container>
       <Card>
-        <Logo>CHATAPP</Logo>
+        <Logo>FT_TRANSCENDENCE</Logo>
         <Title>
-          {view === "login"
-            ? "Welcome Back"
-            : view === "signup"
-            /*? "Create Account"
-            : "Reset Password"*/}
+          {view === "login" ? "Welcome Back" : "Create Account"}
         </Title>
 
         {renderView()}

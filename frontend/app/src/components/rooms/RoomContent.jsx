@@ -1,46 +1,44 @@
 import styled from "styled-components";
+import { TbAlertTriangle, TbMessage2 } from "react-icons/tb";
 import { ProfileName } from "../layout/Sidebar";
 import { formatTimestamp } from "../../api/rooms";
 import { useOpenUserPreview } from "../../hooks/useOpenUserPreview";
+import { Avatar, EmptyState, Spinner } from "../ui";
 
-const PanelEmptyState = styled.div`
+const PanelCenter = styled.div`
   display: grid;
   flex: 1;
   place-items: center;
-  color: var(--color-text-muted);
+  color: var(--text-secondary);
 `;
 
 const RoomContentScroll = styled.div`
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px;
+  padding: var(--space-4);
 `;
 
 const MessageList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-1);
 `;
 
 const MessageItemRoot = styled.article`
   display: flex;
   gap: 10px;
-  padding: 8px;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  transition: background var(--dur-fast) var(--ease);
 
   &:hover {
-    background: var(--color-surface-hover);
+    background: var(--bg-surface);
   }
 `;
 
-const MessageAvatar = styled.div`
-  display: grid;
-  width: 36px;
-  height: 36px;
+const MessageAvatarWrap = styled.div`
   flex: 0 0 36px;
-  border: 1px solid var(--color-text);
-  border-radius: 50%;
-  place-items: center;
   cursor: pointer;
 `;
 
@@ -50,16 +48,18 @@ const MessageBody = styled.div`
 
 const MessageMeta = styled.div`
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: baseline;
 
   time {
-    font-size: 0.8rem;
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
   }
 `;
 
 const MessageContent = styled.p`
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
+  color: var(--text-primary);
   overflow-wrap: anywhere;
 `;
 
@@ -67,31 +67,37 @@ function RoomContent({ roomChat, state, roomName, isDm }) {
   return (
     <>
       {state === "loading" && (
-        <PanelEmptyState>
-          <p>Loading chat...</p>
-        </PanelEmptyState>
+        <PanelCenter>
+          <Spinner $size={24} aria-label="Loading chat" />
+        </PanelCenter>
       )}
 
       {state === "success" && (
         <RoomContentScroll>
-          <MessageList>
-            {roomChat.length === 0 ? (
-              <PanelEmptyState>
-                <p>{isDm ? `Say hello to ${roomName}!` : `Say Hello to #${roomName}!`}</p>
-              </PanelEmptyState>
-            ) : (
-              roomChat.map((message) => (
+          {roomChat.length === 0 ? (
+            <EmptyState
+              icon={TbMessage2}
+              title={isDm ? `Say hello to ${roomName}!` : `Say hello to #${roomName}!`}
+              hint="No messages here yet — be the first to write one."
+            />
+          ) : (
+            <MessageList>
+              {roomChat.map((message) => (
                 <MessageItem key={message.id} message={message} />
-              ))
-            )}
-          </MessageList>
+              ))}
+            </MessageList>
+          )}
         </RoomContentScroll>
       )}
 
       {state === "error" && (
-        <PanelEmptyState>
-          <p>Error loading chat.</p>
-        </PanelEmptyState>
+        <PanelCenter>
+          <EmptyState
+            icon={TbAlertTriangle}
+            title="Error loading chat."
+            hint="Something went wrong fetching these messages."
+          />
+        </PanelCenter>
       )}
     </>
   );
@@ -99,18 +105,19 @@ function RoomContent({ roomChat, state, roomName, isDm }) {
 
 function MessageItem({ message }) {
   const openPreview = useOpenUserPreview();
-  const canPreview = Boolean(message.sender_username);
+  const sender = { id: message.sender_id, username: message.sender_username };
+  const canPreview = Boolean(sender.id);
 
   return (
     <MessageItemRoot>
-      <MessageAvatar onClick={canPreview ? openPreview(message.sender_username) : undefined}>
-        {message.sender_username?.[0] ?? "?"}
-      </MessageAvatar>
+      <MessageAvatarWrap onClick={canPreview ? openPreview(sender) : undefined}>
+        <Avatar name={message.sender_username} $size={36} />
+      </MessageAvatarWrap>
 
       <MessageBody>
         <MessageMeta>
           <ProfileName
-            onClick={canPreview ? openPreview(message.sender_username) : undefined}
+            onClick={canPreview ? openPreview(sender) : undefined}
             style={canPreview ? { cursor: "pointer" } : undefined}
           >
             {message.sender_username ?? "Unknown user"}

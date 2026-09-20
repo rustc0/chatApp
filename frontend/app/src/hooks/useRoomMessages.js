@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { listMessages, openRoomSocket, sendMessage } from "../api/messages";
+import { useCallback, useEffect, useState } from "react";
+import { listMessages, onConnectionStatus, sendMessage, subscribeToRoom } from "../api/messages";
 
 /**
- * One room's messages: REST history on mount, WebSocket for anything that
- * arrives afterwards. `state` mirrors the "loading" | "success" | "error"
- * convention the views already use.
+ * One room's messages: REST history on mount, the shared chat socket for
+ * anything that arrives afterwards (including our own sends, which the server
+ * echoes back). `state` mirrors the "loading" | "success" | "error" convention
+ * the views already use.
  */
 export function useRoomMessages(roomId) {
   const [messages, setMessages] = useState([]);
   const [state, setState] = useState("loading");
   const [connection, setConnection] = useState("connecting");
   const [sending, setSending] = useState(false);
-  const socketRef = useRef(null);
 
   const appendMessage = useCallback((message) => {
     if (!message?.id) return;
@@ -20,6 +20,8 @@ export function useRoomMessages(roomId) {
     );
   }, []);
 
+  useEffect(() => onConnectionStatus(setConnection), []);
+
   useEffect(() => {
     if (!roomId) return undefined;
 
@@ -27,49 +29,42 @@ export function useRoomMessages(roomId) {
     setState("loading");
     setMessages([]);
 
+    // Subscribe first so nothing sent while history loads is lost; the merge
+    // below keeps anything that arrived live and dedupes by id.
+    const unsubscribe = subscribeToRoom(roomId, appendMessage);
+
     listMessages(roomId)
-      .then((data) => {
+      .then((history) => {
         if (cancelled) return;
-        setMessages(Array.isArray(data) ? data : []);
+        setMessages((live) => {
+          const known = new Set(history.map((item) => item.id));
+          return [...history, ...live.filter((item) => !known.has(item.id))];
+        });
         setState("success");
       })
       .catch(() => {
         if (!cancelled) setState("error");
       });
 
-    const socket = openRoomSocket(roomId, {
-      onMessage: (event) => {
-        if (event?.type === "message.created") appendMessage(event.message);
-      },
-      onStatus: (status) => {
-        if (!cancelled) setConnection(status);
-      },
-    });
-
-    socketRef.current = socket;
-
     return () => {
       cancelled = true;
-      socket.close();
-      socketRef.current = null;
+      unsubscribe();
     };
   }, [roomId, appendMessage]);
 
   const send = useCallback(
     async (content) => {
       const text = (content || "").trim();
-      if (!text) return null;
+      if (!text) return;
 
       setSending(true);
       try {
-        const created = await sendMessage(roomId, text);
-        appendMessage(created); // the socket echo is deduped by id
-        return created;
+        await sendMessage(roomId, text);
       } finally {
         setSending(false);
       }
     },
-    [roomId, appendMessage],
+    [roomId],
   );
 
   return { messages, state, connection, sending, send };

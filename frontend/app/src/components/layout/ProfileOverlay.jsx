@@ -22,9 +22,11 @@ import {
 
 import {
   acceptFriendRequest,
+  cancelFriendRequest,
   declineFriendRequest,
   getFriendRequests,
   getFriendsList,
+  getSentFriendRequests,
   removeFriend,
   sendFriendRequest,
 } from "../../api/friends";
@@ -37,6 +39,38 @@ import {
   leaveRoom,
 } from "../../api/rooms";
 
+import { isAvailable } from "../../api/features";
+
+import {
+  AvatarRoot,
+  Button as KitButton,
+  ConfirmDialog,
+  IconButton as KitIconButton,
+  Input as KitInput,
+  Tab,
+  TabList,
+  TextArea as KitTextArea,
+  fadeIn,
+  riseIn,
+} from "../ui";
+
+
+const CONFIRM_TITLES = {
+  "remove-friend": "Remove friend?",
+  "decline-friend-request": "Decline request?",
+  "leave-room": "Leave room?",
+  "cancel-friend-request": "Cancel request?",
+  "decline-room-invite": "Decline invite?",
+};
+
+const CONFIRM_TEXTS = {
+  "remove-friend": (label) => `Remove @${label} from your friends?`,
+  "decline-friend-request": (label) => `Decline the request from @${label}?`,
+  "leave-room": (label) => `Leave ${label}?`,
+  "cancel-friend-request": (label) =>
+    `Cancel your friend request to @${label}?`,
+  "decline-room-invite": (label) => `Decline the invite for ${label}?`,
+};
 
 const DEBOUNCE_MS = 400;
 const PREVIEW_LIMIT = 5;
@@ -64,6 +98,13 @@ export function useUsernameAvailability(username, currentUsername) {
 
     if (!USERNAME_RE.test(username)) {
       setStatus("invalid");
+      return;
+    }
+
+    // No availability endpoint yet — identity answers 409 on save instead,
+    // so don't block saving on a check that can't succeed.
+    if (!isAvailable("usernameCheck")) {
+      setStatus("idle");
       return;
     }
 
@@ -107,8 +148,9 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
     notifyRoomsChanged,
   } = useProfileOverlay();
 
+  // /me answers with the stored filename in `avatar`.
   const { avatarUrl, loading: avatarLoading } = useAvatarUrl(
-    user.avatar_file
+    user.avatar
   );
 
   const avatarInputRef = useRef(null);
@@ -206,6 +248,10 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
   const [rooms, setRooms] = useState([]);
   const [roomsOffset, setRoomsOffset] = useState(0);
   const [roomsHasMore, setRoomsHasMore] = useState(false);
+
+  const [sentRequests, setSentRequests] = useState([]);
+  const [sentOffset, setSentOffset] = useState(0);
+  const [sentHasMore, setSentHasMore] = useState(false);
 
   const [roomInvites, setRoomInvites] = useState([]);
   const [invitesOffset, setInvitesOffset] = useState(0);
@@ -426,6 +472,37 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
     }
   };
 
+  const loadSentPage = async (reset = false) => {
+    const nextOffset = reset ? 0 : sentOffset;
+
+    reset ? setLoadingSection(true) : setLoadingMore(true);
+    setSectionError("");
+
+    try {
+      const data = await getSentFriendRequests({
+        limit: MANAGEMENT_PAGE_SIZE,
+        offset: nextOffset,
+      });
+
+      const batch = Array.isArray(data) ? data : [];
+
+      setSentRequests((prev) =>
+        reset ? batch : [...prev, ...batch]
+      );
+      setSentOffset(nextOffset + batch.length);
+      setSentHasMore(batch.length === MANAGEMENT_PAGE_SIZE);
+    } catch (error) {
+      console.error("Failed to load sent requests:", error);
+
+      setSectionError(
+        error?.message || "Failed to load sent requests."
+      );
+    } finally {
+      reset ? setLoadingSection(false) : setLoadingMore(false);
+    }
+  };
+
+
   const loadInvitesPage = async (reset = false) => {
     const nextOffset = reset ? 0 : invitesOffset;
 
@@ -475,13 +552,13 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
         loadFriendsPage(true);
       } else if (managementTab === "requests") {
         loadRequestsPage(true);
+      } else if (managementTab === "sent") {
+        loadSentPage(true);
       }
+    } else if (managementTab === "invites") {
+      loadInvitesPage(true);
     } else {
-      if (managementTab === "rooms") {
-        loadRoomsPage(true);
-      } else if (managementTab === "invites") {
-        loadInvitesPage(true);
-      }
+      loadRoomsPage(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, previewSection, managementSection, managementTab, user.id]);
@@ -524,6 +601,17 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
   };
 
 
+  const requestCancelSentRequest = (request) => {
+    setConfirmError("");
+
+    setConfirmAction({
+      type: "cancel-friend-request",
+      id: request.receiver?.id,
+      label: request.receiver?.username || "this user",
+    });
+  };
+
+
   const requestDeclineRoomInvite = (invite) => {
     setConfirmError("");
 
@@ -549,15 +637,15 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
     if (managementSection === "friends") {
       if (managementTab === "friends") {
         await loadFriendsPage(true);
-      } else {
+      } else if (managementTab === "requests") {
         await loadRequestsPage(true);
+      } else if (managementTab === "sent") {
+        await loadSentPage(true);
       }
+    } else if (managementTab === "invites") {
+      await loadInvitesPage(true);
     } else {
-      if (managementTab === "rooms") {
-        await loadRoomsPage(true);
-      } else {
-        await loadInvitesPage(true);
-      }
+      await loadRoomsPage(true);
     }
   };
 
@@ -580,8 +668,12 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
       }
 
       if (confirmAction.type === "leave-room") {
-        await leaveRoom(confirmAction.id, user.id);
+        await leaveRoom(confirmAction.id);
         notifyRoomsChanged();
+      }
+
+      if (confirmAction.type === "cancel-friend-request") {
+        await cancelFriendRequest(confirmAction.id);
       }
 
       if (confirmAction.type === "decline-room-invite") {
@@ -702,13 +794,13 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
           items.map((room) => (
             <ListRow key={room.id}>
               <RowAvatar>
-                {(room.name || "DM")
+                {(room.name || room.peer?.username || "DM")
                   .charAt(0)
                   .toUpperCase()}
               </RowAvatar>
 
               <RowName>
-                {room.name || "Direct message"}
+                {room.name || room.peer?.username || "Direct message"}
               </RowName>
 
               {!isPreview && (
@@ -854,6 +946,58 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
       );
     }
 
+    if (managementTab === "sent") {
+      return (
+        <ExpandedListPanel>
+          {sentRequests.length > 0 ? (
+            sentRequests.map((request) => (
+              <RequestRow key={request.friendship_id}>
+                <RowAvatar>
+                  {request.receiver?.username
+                    ?.charAt(0)
+                    ?.toUpperCase() || "?"}
+                </RowAvatar>
+
+                <RowName>
+                  {request.receiver?.username}
+                </RowName>
+
+                <RequestActions>
+                  <ActionButton
+                    type="button"
+                    onClick={() =>
+                      requestCancelSentRequest(request)
+                    }
+                    aria-label={`Cancel request to ${
+                      request.receiver?.username
+                    }`}
+                  >
+                    <TbX size={16} />
+                  </ActionButton>
+                </RequestActions>
+              </RequestRow>
+            ))
+          ) : (
+            <EmptyState>
+              No sent requests
+            </EmptyState>
+          )}
+
+          {sentHasMore && (
+            <CenteredButtonWrap>
+              <PillButton
+                type="button"
+                onClick={() => loadSentPage(false)}
+                disabled={loadingMore}
+              >
+                {loadingMore ? "Loading..." : "Load more"}
+              </PillButton>
+            </CenteredButtonWrap>
+          )}
+        </ExpandedListPanel>
+      );
+    }
+
     return (
       <AddPanel onSubmit={handleFriendSearchAdd}>
         <AddRow>
@@ -883,16 +1027,74 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
 
 
   const renderRoomsManagement = () => {
-    if (managementTab === "rooms") {
+    if (managementTab === "invites") {
       return (
         <ExpandedListPanel>
-          {renderRoomRows(rooms, false)}
+          {roomInvites.length > 0 ? (
+            roomInvites.map((invite) => (
+              <RequestRow key={invite.id}>
+                <RowAvatar>
+                  {(invite.room_name || "DM")
+                    .charAt(0)
+                    .toUpperCase()}
+                </RowAvatar>
 
-          {roomsHasMore && (
+                <RowName>
+                  {invite.room_name || "Direct message"}
+                </RowName>
+
+                <RequestActions>
+                  <ActionButton
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await acceptRoomInvite(invite.id);
+
+                        await Promise.all([
+                          refreshProfile(),
+                          loadInvitesPage(true),
+                        ]);
+
+                        notifyRoomsChanged();
+                      } catch (error) {
+                        setSectionError(
+                          error?.message ||
+                            "Failed to accept invite."
+                        );
+                      }
+                    }}
+                    aria-label={`Accept invite for ${
+                      invite.room_name || "room"
+                    }`}
+                  >
+                    <TbCheck size={16} />
+                  </ActionButton>
+
+                  <ActionButton
+                    type="button"
+                    onClick={() =>
+                      requestDeclineRoomInvite(invite)
+                    }
+                    aria-label={`Decline invite for ${
+                      invite.room_name || "room"
+                    }`}
+                  >
+                    <TbX size={16} />
+                  </ActionButton>
+                </RequestActions>
+              </RequestRow>
+            ))
+          ) : (
+            <EmptyState>
+              No pending invites
+            </EmptyState>
+          )}
+
+          {invitesHasMore && (
             <CenteredButtonWrap>
               <PillButton
                 type="button"
-                onClick={() => loadRoomsPage(false)}
+                onClick={() => loadInvitesPage(false)}
                 disabled={loadingMore}
               >
                 {loadingMore ? "Loading..." : "Load more"}
@@ -905,76 +1107,13 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
 
     return (
       <ExpandedListPanel>
-        {roomInvites.length > 0 ? (
-          roomInvites.map((invite) => (
-            <RequestRow key={invite.id}>
-              <RowAvatar>
-                {(invite.room_name || "DM")
-                  .charAt(0)
-                  .toUpperCase()}
-              </RowAvatar>
+        {renderRoomRows(rooms, false)}
 
-              <RowName>
-                {invite.room_name ||
-                  "Direct message"}
-              </RowName>
-
-              <RequestActions>
-                <ActionButton
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      await acceptRoomInvite(
-                        invite.id
-                      );
-
-                      await Promise.all([
-                        refreshProfile(),
-                        loadInvitesPage(true),
-                      ]);
-
-                      notifyRoomsChanged();
-                    } catch (error) {
-                      setSectionError(
-                        error?.message ||
-                          "Failed to accept invite."
-                      );
-                    }
-                  }}
-                  aria-label={`Accept invite for ${
-                    invite.room_name || "room"
-                  }`}
-                >
-                  <TbCheck size={16} />
-                </ActionButton>
-
-                <ActionButton
-                  type="button"
-                  onClick={() =>
-                    requestDeclineRoomInvite(
-                      invite
-                    )
-                  }
-                  aria-label={`Decline invite for ${
-                    invite.room_name || "room"
-                  }`}
-                >
-                  <TbX size={16} />
-                </ActionButton>
-              </RequestActions>
-            </RequestRow>
-          ))
-        ) : (
-          <EmptyState>
-            No pending invites
-          </EmptyState>
-        )}
-
-        {invitesHasMore && (
+        {roomsHasMore && (
           <CenteredButtonWrap>
             <PillButton
               type="button"
-              onClick={() => loadInvitesPage(false)}
+              onClick={() => loadRoomsPage(false)}
               disabled={loadingMore}
             >
               {loadingMore ? "Loading..." : "Load more"}
@@ -1285,8 +1424,24 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
                         )
                       }
                     >
-                      Requests
+                      Incoming
                     </ManagementTab>
+
+                    {isAvailable("sentFriendRequests") && (
+                      <ManagementTab
+                        type="button"
+                        $active={
+                          managementTab === "sent"
+                        }
+                        onClick={() =>
+                          setManagementTab(
+                            "sent"
+                          )
+                        }
+                      >
+                        Sent
+                      </ManagementTab>
+                    )}
 
                     <ManagementTab
                       type="button"
@@ -1321,8 +1476,7 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
                     <ManagementTab
                       type="button"
                       $active={
-                        managementTab ===
-                        "invites"
+                        managementTab === "invites"
                       }
                       onClick={() =>
                         setManagementTab(
@@ -1362,80 +1516,20 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
         {/* CONFIRMATION                                                       */}
         {/* ----------------------------------------------------------------- */}
 
-        {confirmAction && (
-          <ConfirmBackdrop
-            onClick={cancelConfirmAction}
-          >
-            <ConfirmCard
-              onClick={(e) =>
-                e.stopPropagation()
-              }
-            >
-              <ConfirmTitle>
-                {confirmAction.type ===
-                  "remove-friend" &&
-                  "Remove friend?"}
-
-                {confirmAction.type ===
-                  "decline-friend-request" &&
-                  "Decline request?"}
-
-                {confirmAction.type ===
-                  "leave-room" &&
-                  "Leave room?"}
-
-                {confirmAction.type ===
-                  "decline-room-invite" &&
-                  "Decline invite?"}
-              </ConfirmTitle>
-
-              <ConfirmText>
-                {confirmAction.type ===
-                  "remove-friend" &&
-                  `Remove @${confirmAction.label} from your friends?`}
-
-                {confirmAction.type ===
-                  "decline-friend-request" &&
-                  `Decline the request from @${confirmAction.label}?`}
-
-                {confirmAction.type ===
-                  "leave-room" &&
-                  `Leave ${confirmAction.label}?`}
-
-                {confirmAction.type ===
-                  "decline-room-invite" &&
-                  `Decline the invite for ${confirmAction.label}?`}
-              </ConfirmText>
-
-              {confirmError && (
-                <ConfirmErrorText>
-                  {confirmError}
-                </ConfirmErrorText>
-              )}
-
-              <ConfirmActions>
-                <ConfirmButton
-                  type="button"
-                  onClick={cancelConfirmAction}
-                  disabled={runningAction}
-                >
-                  Cancel
-                </ConfirmButton>
-
-                <ConfirmButton
-                  type="button"
-                  $danger
-                  onClick={applyAction}
-                  disabled={runningAction}
-                >
-                  {runningAction
-                    ? "Applying..."
-                    : "Confirm"}
-                </ConfirmButton>
-              </ConfirmActions>
-            </ConfirmCard>
-          </ConfirmBackdrop>
-        )}
+        <ConfirmDialog
+          open={Boolean(confirmAction)}
+          position="absolute"
+          title={confirmAction ? CONFIRM_TITLES[confirmAction.type] : ""}
+          text={
+            confirmAction
+              ? CONFIRM_TEXTS[confirmAction.type]?.(confirmAction.label)
+              : ""
+          }
+          error={confirmError}
+          busy={runningAction}
+          onConfirm={applyAction}
+          onCancel={cancelConfirmAction}
+        />
       </Card>
     </Overlay>
   );
@@ -1449,94 +1543,58 @@ export default function ProfileOverlay({ user, onClose, onSave }) {
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-
   display: flex;
   justify-content: center;
   align-items: flex-start;
-
   overflow-y: auto;
-
   padding: 4vh 0;
-
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(8px);
-
+  animation: ${fadeIn} var(--dur) var(--ease);
   z-index: 9999;
 `;
 
 const Card = styled.div`
   position: relative;
-
   width: 640px;
   max-width: 90vw;
-
   height: 85vh;
-
   display: flex;
   flex-direction: column;
-
-  background: var(--color-bg);
-
-  border: 1px solid var(--color-surface-hover);
-  border-radius: 20px;
-
   overflow: hidden;
-
-  color: var(--color-text);
-
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-lg);
+  animation: ${riseIn} var(--dur) var(--ease);
 `;
 
 const Banner = styled.div`
   flex-shrink: 0;
-
   height: 160px;
-
-  background:
-    color-mix(
-      in srgb,
-      var(--color-bg) 75%,
-      black
-    );
-
-  border-bottom:
-    1px solid var(--color-surface-hover);
+  border-bottom: 1px solid var(--border-subtle);
+  background: linear-gradient(
+    135deg,
+    var(--accent-600),
+    color-mix(in srgb, var(--accent-600) 30%, var(--bg-base))
+  );
 `;
 
-
-const CloseButton = styled.button`
+const CloseButton = styled(KitIconButton).attrs({ $size: 36 })`
   position: absolute;
-
-  top: 1rem;
-  right: 1rem;
-
-  width: 36px;
-  height: 36px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  background: rgba(0, 0, 0, 0.35);
-
-  border:
-    1px solid
-    rgba(255, 255, 255, 0.15);
-
+  top: var(--space-4);
+  right: var(--space-4);
+  border-color: var(--border-strong);
   border-radius: 50%;
-
+  background: rgba(0, 0, 0, 0.35);
   color: #fff;
 
-  cursor: pointer;
-
-  transition:
-    background 0.15s ease;
-
-  &:hover {
+  &:hover:not(:disabled) {
     background: rgba(0, 0, 0, 0.55);
+    color: #fff;
   }
 `;
-
 
 // =============================================================================
 // Avatar — straddles the banner/content seam, centered horizontally,
@@ -1545,57 +1603,38 @@ const CloseButton = styled.button`
 
 const AvatarWrap = styled.div`
   flex-shrink: 0;
-
   display: flex;
   flex-direction: column;
   align-items: center;
-
   gap: 6px;
-
   margin-top: -64px;
-
   z-index: 1;
 `;
 
 const AvatarOverlay = styled.div`
   position: absolute;
   inset: 0;
-
   display: grid;
   place-items: center;
-
   padding: 0 10px;
-
   text-align: center;
-
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 600;
-
   color: #fff;
-
   background: rgba(0, 0, 0, 0.55);
-
   opacity: 0;
-
-  transition: opacity 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease);
 `;
 
 const AvatarButton = styled.button`
   position: relative;
-
   width: 128px;
   height: 128px;
-
   padding: 0;
-
-  border: 5px solid var(--color-bg);
-  border-radius: 50%;
-
   overflow: hidden;
-
-  background: var(--color-surface-hover);
-
-  cursor: pointer;
+  border: 5px solid var(--bg-elevated);
+  border-radius: 50%;
+  background: var(--accent-600);
 
   &:hover:not(:disabled) ${AvatarOverlay} {
     opacity: 1;
@@ -1609,24 +1648,19 @@ const AvatarButton = styled.button`
 const AvatarImage = styled.img`
   position: absolute;
   inset: 0;
-
   width: 100%;
   height: 100%;
-
   object-fit: cover;
 `;
 
 const AvatarFallback = styled.span`
   position: absolute;
   inset: 0;
-
   display: grid;
   place-items: center;
-
   font-size: 2.25rem;
   font-weight: 700;
-
-  color: var(--color-text-muted);
+  color: var(--accent-fg);
 `;
 
 const HiddenFileInput = styled.input`
@@ -1634,239 +1668,115 @@ const HiddenFileInput = styled.input`
 `;
 
 const AvatarErrorText = styled.span`
-  font-size: 0.75rem;
-
-  color: var(--color-danger, #e5484d);
+  font-size: var(--text-xs);
+  color: var(--danger);
 `;
-
 
 const Content = styled.div`
   flex: 1;
   min-height: 0;
-
-  padding: 0 2rem 2rem;
-
+  padding: 0 var(--space-6) var(--space-6);
   display: flex;
   flex-direction: column;
-
   overflow: hidden;
 `;
 
-
 const LoadingHint = styled.p`
-  margin: 12px 0 0;
-
-  color: var(--color-text-muted);
-
-  font-size: 0.9rem;
+  margin: var(--space-3) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
 `;
-
 
 const HeaderRow = styled.div`
   flex-shrink: 0;
-
   display: flex;
-
   justify-content: space-between;
   align-items: center;
-
-  margin-top: 1rem;
-
-  gap: 1rem;
+  margin-top: var(--space-4);
+  gap: var(--space-4);
 `;
-
 
 const NameBlock = styled.div`
   min-width: 0;
-
   display: flex;
   flex-direction: column;
-
   gap: 6px;
-
   flex: 1;
 `;
 
-
 const Username = styled.h2`
   margin: 0;
-
   font-size: 1.4rem;
-
-  color: var(--color-text);
-
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 `;
 
-
 const Handle = styled.span`
   display: block;
-
   margin-top: 2px;
-
-  font-size: 0.9rem;
-
-  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
 `;
 
-
-const inputBase = `
-  width: 100%;
-
-  background:
-    var(--color-surface, transparent);
-
-  border:
-    1px solid
-    var(--color-surface-hover);
-
-  border-radius: 8px;
-
-  color: var(--color-text);
-
-  padding: 6px 10px;
-
-  font-family: inherit;
-
-  outline: none;
-
-  &:focus {
-    border-color: var(--color-accent);
-  }
-`;
-
-
-const NameInput = styled.input`
-  ${inputBase}
-
+const NameInput = styled(KitInput)`
   font-size: 1.15rem;
   font-weight: 600;
 `;
 
-
-const HandleInput = styled.input`
-  ${inputBase}
-
-  font-size: 0.9rem;
+const HandleInput = styled(KitInput)`
+  font-size: var(--text-sm);
 
   border-color: ${({ $status }) =>
-    $status === "taken" ||
-    $status === "invalid" ||
-    $status === "error"
-      ? "var(--color-danger, #e5484d)"
+    $status === "taken" || $status === "invalid" || $status === "error"
+      ? "var(--danger)"
       : $status === "available"
-      ? "var(--color-success, #30a46c)"
-      : "var(--color-surface-hover)"};
+      ? "var(--success)"
+      : "var(--border-strong)"};
 `;
-
 
 const HelperText = styled.span`
-  font-size: 0.78rem;
-
-  margin-top: 4px;
-
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
   color: ${({ $error, $ok }) =>
-    $error
-      ? "var(--color-danger, #e5484d)"
-      : $ok
-      ? "var(--color-success, #30a46c)"
-      : "var(--color-text-muted)"};
+    $error ? "var(--danger)" : $ok ? "var(--success)" : "var(--text-tertiary)"};
 `;
 
-
-const BioInput = styled.textarea`
-  ${inputBase}
-
-  margin-top: 1.25rem;
-
-  resize: vertical;
-
-  line-height: 1.5;
+const BioInput = styled(KitTextArea)`
+  margin-top: var(--space-5);
 `;
-
 
 const EditActions = styled.div`
   flex-shrink: 0;
-
   display: flex;
-
-  gap: 8px;
+  gap: var(--space-2);
 `;
 
-
-const IconButton = styled.button`
-  flex-shrink: 0;
-
-  width: 40px;
-  height: 40px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  border:
-    1px solid
-    var(--color-surface-hover);
-
+const IconButton = styled(KitIconButton).attrs({ $size: 40 })`
+  border-color: var(--border-strong);
   border-radius: 50%;
 
-  background: transparent;
-
-  color: var(--color-text);
-
-  cursor: pointer;
-
-  transition:
-    border-color 0.15s ease,
-    color 0.15s ease,
-    transform 0.1s ease;
-
-  &:hover {
-    color: var(--color-accent);
-    border-color: var(--color-accent);
-  }
-
-  &:active {
+  &:active:not(:disabled) {
     transform: scale(0.97);
   }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-
-    &:hover {
-      color: var(--color-text);
-      border-color: var(--color-surface-hover);
-    }
-  }
 `;
-
 
 const Divider = styled.div`
   flex-shrink: 0;
-
-  margin-top: 1.25rem;
-
-  border-top:
-    1px solid
-    var(--color-surface-hover);
+  margin-top: var(--space-5);
+  border-top: 1px solid var(--border-subtle);
 `;
-
 
 const Bio = styled.p`
   flex-shrink: 0;
-
   margin: 0;
-
-  padding-top: 1.25rem;
-
+  padding-top: var(--space-5);
   line-height: 1.5;
-
-  color: var(--color-text);
+  color: var(--text-secondary);
 `;
-
 
 // =============================================================================
 // Profile preview
@@ -1875,87 +1785,28 @@ const Bio = styled.p`
 const PreviewSection = styled.div`
   flex: 1;
   min-height: 0;
-
-  margin-top: 1.5rem;
-
+  margin-top: var(--space-5);
   display: flex;
   flex-direction: column;
 `;
 
-
-const PreviewTabs = styled.div`
+const PreviewTabs = styled(TabList)`
   flex-shrink: 0;
-
-  display: flex;
   justify-content: flex-start;
-
-  gap: 1.5rem;
-
-  border-bottom: 1px solid var(--color-surface-hover);
+  gap: var(--space-5);
 `;
 
-
-const PreviewTab = styled.button`
-  position: relative;
-
-  background: none;
-  border: none;
-
-  padding: 0 0 0.75rem;
-
-  font-size: 0.95rem;
-  font-weight: 600;
-
-  cursor: pointer;
-
-  color: ${({ $active }) =>
-    $active
-      ? "var(--color-text)"
-      : "var(--color-text-muted)"};
-
-  border-bottom: none;
-
-  margin-bottom: -1px;
-
-  transition: color 0.15s ease;
-
-  &::after {
-    content: "";
-
-    position: absolute;
-
-    left: 0;
-    right: 0;
-    bottom: 0;
-
-    height: 2px;
-
-    background:
-      ${({ $active }) =>
-        $active
-          ? "var(--color-accent)"
-          : "transparent"};
-  }
-
-  &:hover {
-    color: var(--color-text);
-  }
-`;
+const PreviewTab = Tab;
 
 const PreviewPanel = styled.div`
   flex: 1;
   min-height: 0;
-
-  margin-top: 0.75rem;
-
+  margin-top: var(--space-3);
   display: flex;
   flex-direction: column;
-
-  gap: 4px;
-
+  gap: 2px;
   overflow-y: auto;
 `;
-
 
 // =============================================================================
 // Management
@@ -1963,169 +1814,62 @@ const PreviewPanel = styled.div`
 
 const ManagementHeader = styled.div`
   flex-shrink: 0;
-
   display: grid;
-
   grid-template-columns: 80px 1fr 80px;
-
   align-items: center;
-
   min-height: 48px;
-
-  margin-top: 1.5rem;
-
-  padding-bottom: 0.75rem;
-
-  border-bottom:
-    1px solid
-    var(--color-surface-hover);
+  margin-top: var(--space-5);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
 `;
 
-
-const BackButton = styled.button`
+const BackButton = styled(KitButton).attrs({ $variant: "secondary", $pill: true, $size: "sm" })`
   justify-self: start;
-
-  border:
-    1px solid
-    var(--color-surface-hover);
-
-  border-radius: 999px;
-
-  background: transparent;
-
-  color: var(--color-text);
-
-  display: inline-flex;
-
-  align-items: center;
-
-  gap: 0.45rem;
-
-  padding: 0.45rem 0.75rem;
-
-  cursor: pointer;
-
-  transition:
-    border-color 0.15s ease,
-    color 0.15s ease;
-
-  &:hover {
-    color: var(--color-accent);
-    border-color: var(--color-accent);
-  }
 `;
-
 
 const ManagementTitle = styled.h3`
   margin: 0;
-
   text-align: center;
-
-  font-size: 1.05rem;
+  font-size: var(--text-lg);
   font-weight: 700;
-
-  color: var(--color-text);
+  color: var(--text-primary);
 `;
-
 
 const HeaderSpacer = styled.div`
   width: 80px;
 `;
 
-
-const ManagementTabs = styled.div`
+const ManagementTabs = styled(TabList)`
   flex-shrink: 0;
-
-  display: flex;
   justify-content: flex-start;
-  align-items: center;
-
-  gap: 1.5rem;
-
-  padding: 1rem 0 0.75rem;
-
-  border-bottom: 1px solid var(--color-surface-hover);
+  gap: var(--space-5);
+  padding-top: var(--space-4);
 `;
 
-
-const ManagementTab = styled.button`
-  position: relative;
-
-  border: none;
-  background: none;
-
-  padding: 0 0 0.65rem;
-
-  color: ${({ $active }) =>
-    $active
-      ? "var(--color-text)"
-      : "var(--color-text-muted)"};
-
-  font-size: 0.95rem;
-  font-weight: 600;
-
-  cursor: pointer;
-
-  transition: color 0.15s ease;
-
-  &::after {
-    content: "";
-
-    position: absolute;
-
-    left: 0;
-    right: 0;
-    bottom: -1px;
-
-    height: 2px;
-
-    background:
-      ${({ $active }) =>
-        $active
-          ? "var(--color-accent)"
-          : "transparent"};
-  }
-
-  &:hover {
-    color: var(--color-text);
-  }
-`;
-
+const ManagementTab = Tab;
 
 const ManagementContent = styled.div`
   flex: 1;
   min-height: 0;
-
   display: flex;
-
   flex-direction: column;
 `;
 
-
 const InlineError = styled.div`
   flex-shrink: 0;
-
-  margin-bottom: 0.75rem;
-
-  color:
-    var(--color-danger, var(--color-accent));
-
-  font-size: 0.9rem;
+  margin-bottom: var(--space-3);
+  color: var(--danger);
+  font-size: var(--text-sm);
 `;
-
 
 const ExpandedListPanel = styled.div`
   flex: 1;
   min-height: 0;
-
   overflow-y: auto;
-
   display: flex;
   flex-direction: column;
-
-  gap: 4px;
+  gap: 2px;
 `;
-
 
 // =============================================================================
 // Lists
@@ -2133,119 +1877,52 @@ const ExpandedListPanel = styled.div`
 
 const ListRow = styled.div`
   display: flex;
-
   align-items: center;
-
   gap: 10px;
-
-  padding: 8px 4px;
-
-  border-radius: 10px;
-
-  transition:
-    background 0.15s ease;
+  padding: var(--space-2) var(--space-1);
+  border-radius: var(--radius-md);
+  transition: background var(--dur-fast) var(--ease);
 
   &:hover {
-    background:
-      var(--color-surface-hover);
+    background: var(--bg-hover);
   }
 `;
 
-
-const RowAvatar = styled.div`
-  flex-shrink: 0;
-
-  width: 36px;
-  height: 36px;
-
-  border-radius: 50%;
-
-  display: grid;
-  place-items: center;
-
-  font-size: 0.85rem;
-  font-weight: 700;
-
-  color: var(--color-text);
-
-  background:
-    var(--color-surface-hover);
+const RowAvatar = styled(AvatarRoot)`
+  background: var(--accent-600);
 `;
-
 
 const RowName = styled.span`
   flex: 1;
-
   min-width: 0;
-
-  font-size: 0.95rem;
-
-  color: var(--color-text);
-
+  font-size: var(--text-md);
+  color: var(--text-primary);
   overflow: hidden;
-
   text-overflow: ellipsis;
-
   white-space: nowrap;
 `;
 
-
-const ActionButton = styled.button`
-  flex-shrink: 0;
-
-  width: 30px;
-  height: 30px;
-
-  border-radius: 8px;
-
-  border:
-    1px solid
-    var(--color-surface-hover);
-
-  background: transparent;
-
-  color: var(--color-text-muted);
-
-  display: grid;
-  place-items: center;
-
-  cursor: pointer;
-
-  &:hover {
-    color: var(--color-accent);
-
-    border-color:
-      var(--color-accent);
-  }
+const ActionButton = styled(KitIconButton).attrs({ $size: 30 })`
+  border-color: var(--border-strong);
 `;
-
 
 const RequestRow = styled(ListRow)`
   justify-content: space-between;
 `;
 
-
 const RequestActions = styled.div`
   display: flex;
-
   align-items: center;
-
-  gap: 0.45rem;
+  gap: var(--space-1);
 `;
-
 
 const EmptyState = styled.div`
   flex-shrink: 0;
-
-  padding: 1.5rem 4px;
-
-  color: var(--color-text-muted);
-
-  font-size: 0.9rem;
-
+  padding: var(--space-5) var(--space-1);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
   text-align: center;
 `;
-
 
 // =============================================================================
 // Add friend
@@ -2253,73 +1930,33 @@ const EmptyState = styled.div`
 
 const AddPanel = styled.form`
   display: flex;
-
   flex-direction: column;
-
-  gap: 0.75rem;
-
-  padding-top: 0.25rem;
+  gap: var(--space-3);
+  padding-top: var(--space-1);
 `;
-
 
 const AddRow = styled.div`
   display: flex;
-
-  gap: 0.65rem;
-
+  gap: 10px;
   align-items: center;
 `;
 
-
-const AddInput = styled.input`
+const AddInput = styled(KitInput)`
   flex: 1;
-
   min-width: 0;
-
-  ${inputBase}
 `;
 
-
-const AddButton = styled.button`
+const AddButton = styled(KitButton).attrs({ $pill: true, $size: "sm" })`
   flex-shrink: 0;
-
-  border:
-    1px solid
-    var(--color-accent);
-
-  border-radius: 999px;
-
-  background:
-    var(--color-accent);
-
-  color: #fff;
-
-  padding: 0.5rem 0.9rem;
-
-  font-weight: 600;
-
-  cursor: pointer;
-
-  &:disabled {
-    opacity: 0.5;
-
-    cursor: not-allowed;
-  }
 `;
-
 
 const HelperRow = styled.div`
   display: inline-flex;
-
   align-items: center;
-
-  gap: 0.35rem;
-
-  color: var(--color-text-muted);
-
-  font-size: 0.85rem;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
 `;
-
 
 // =============================================================================
 // See all / Load more
@@ -2327,161 +1964,9 @@ const HelperRow = styled.div`
 
 const CenteredButtonWrap = styled.div`
   flex-shrink: 0;
-
   display: flex;
-
   justify-content: center;
-
-  padding: 0.75rem 0 0.25rem;
+  padding: var(--space-3) 0 var(--space-1);
 `;
 
-
-const PillButton = styled.button`
-  border:
-    1px solid
-    var(--color-surface-hover);
-
-  border-radius: 999px;
-
-  background: transparent;
-
-  color: var(--color-text);
-
-  padding: 0.5rem 1rem;
-
-  font-weight: 600;
-
-  cursor: pointer;
-
-  transition:
-    border-color 0.15s ease,
-    color 0.15s ease;
-
-  &:hover {
-    color: var(--color-accent);
-
-    border-color:
-      var(--color-accent);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-
-    cursor: not-allowed;
-  }
-`;
-
-
-// =============================================================================
-// Confirmation
-// =============================================================================
-
-const ConfirmBackdrop = styled.div`
-  position: absolute;
-
-  inset: 0;
-
-  background:
-    rgba(0, 0, 0, 0.45);
-
-  display: grid;
-
-  place-items: center;
-
-  padding: 1rem;
-
-  z-index: 10;
-`;
-
-
-const ConfirmCard = styled.div`
-  width: min(92vw, 360px);
-
-  background:
-    var(--color-bg);
-
-  border:
-    1px solid
-    var(--color-surface-hover);
-
-  border-radius: 12px;
-
-  padding: 1rem;
-
-  box-shadow:
-    0 16px 40px
-    rgba(0, 0, 0, 0.25);
-`;
-
-
-const ConfirmTitle = styled.h4`
-  margin: 0;
-
-  color: var(--color-text);
-`;
-
-
-const ConfirmText = styled.p`
-  margin: 0.75rem 0 1rem;
-
-  color: var(--color-text-muted);
-
-  font-size: 0.9rem;
-
-  line-height: 1.5;
-`;
-
-
-const ConfirmErrorText = styled.p`
-  margin: 0 0 1rem;
-
-  color:
-    var(--color-danger, var(--color-accent));
-
-  font-size: 0.85rem;
-`;
-
-
-const ConfirmActions = styled.div`
-  display: flex;
-
-  justify-content: flex-end;
-
-  gap: 0.5rem;
-`;
-
-
-const ConfirmButton = styled.button`
-  border-radius: 8px;
-
-  border:
-    1px solid
-    ${({ $danger }) =>
-      $danger
-        ? "var(--color-danger, var(--color-accent))"
-        : "var(--color-surface-hover)"};
-
-  background:
-    ${({ $danger }) =>
-      $danger
-        ? "var(--color-danger, var(--color-accent))"
-        : "transparent"};
-
-  color:
-    ${({ $danger }) =>
-      $danger
-        ? "#fff"
-        : "var(--color-text)"};
-
-  padding: 0.45rem 0.8rem;
-
-  cursor: pointer;
-
-  font-weight: 600;
-
-  &:disabled {
-    opacity: 0.5;
-
-    cursor: not-allowed;
-  }
-`;
+const PillButton = styled(KitButton).attrs({ $variant: "secondary", $pill: true, $size: "sm" })``;

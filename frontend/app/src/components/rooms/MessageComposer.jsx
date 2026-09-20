@@ -1,68 +1,60 @@
 import { useState } from "react";
 import styled from "styled-components";
+import { TbSend } from "react-icons/tb";
+import { Button, Input } from "../ui";
 
 const MessageComposerForm = styled.form`
-	display: flex;
-	gap: 8px;
-	padding: 12px;
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+`;
 
-	input {
-		min-width: 0;
-		flex: 1;
-		border: 0;
-		border-radius: 8px;
-		padding: 12px;
-		outline: none;
-		background: var(--color-surface-hover);
-		color: var(--color-text-muted);
-	}
+const ComposerInput = styled(Input)`
+  min-width: 0;
+  flex: 1;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+`;
 
-	button {
-		border: 0;
-		border-radius: 8px;
-		padding: 0 16px;
-		background: transparent;
-		color: var(--color-accent);
-	}
-
-	button:hover:not(:disabled) {
-		background: var(--color-accent);
-		color: white;
-	}
-
-	button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
+const SendButton = styled(Button)`
+  @media (max-width: 700px) {
+    span {
+      display: none;
+    }
+  }
 `;
 
 function MessageComposer({ roomName, isDm, onSend, disabled }) {
-	const [text, setText] = useState("");
-	const label = isDm ? `Message ${roomName}` : `Message #${roomName}`;
+  const [text, setText] = useState("");
+  const label = isDm ? `Message ${roomName}` : `Message #${roomName}`;
 
-	async function handleSubmit(event) {
-	  event.preventDefault();
+  async function handleSubmit(event) {
+    event.preventDefault();
 
-	  const trimmed = text.trim();
-	  if (!trimmed || disabled) return;
+    const trimmed = text.trim();
+    if (!trimmed || disabled) return;
 
-	  await onSend?.(trimmed);
-	  setText("");
-	}
+    await onSend?.(trimmed);
+    setText("");
+  }
 
-	return (
-	  <MessageComposerForm onSubmit={handleSubmit}>
-		<input
-		  type="text"
-		  value={text}
-		  onChange={(event) => setText(event.target.value)}
-		  placeholder={label}
-		  aria-label={label}
-		  disabled={disabled}
-		/>
-		<button type="submit" disabled={disabled}>Send</button>
-	  </MessageComposerForm>
-	);
-	}
+  return (
+    <MessageComposerForm onSubmit={handleSubmit}>
+      <ComposerInput
+        type="text"
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        placeholder={label}
+        aria-label={label}
+        disabled={disabled}
+      />
 
-	export default MessageComposer;
+      <SendButton type="submit" $pill disabled={disabled || !text.trim()}>
+        <TbSend size={18} />
+        <span>Send</span>
+      </SendButton>
+    </MessageComposerForm>
+  );
+}
+
+export default MessageComposer;

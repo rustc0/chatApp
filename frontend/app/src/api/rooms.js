@@ -1,4 +1,5 @@
 import { buildQuery, jsonBody, request } from "./http";
+import { getCurrentUserId } from "./session";
 
 const ROOMS = "/api/rooms";
 
@@ -72,8 +73,8 @@ export async function removeMember(roomId, userId) {
   );
 }
 
-/** Leaving is removing yourself. */
-export async function leaveRoom(roomId, userId) {
+/** Leaving is removing yourself, so the id defaults to the signed-in user. */
+export async function leaveRoom(roomId, userId = getCurrentUserId()) {
   return removeMember(roomId, userId);
 }
 

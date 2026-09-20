@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import styled from "styled-components";
-import { TbArrowLeft, TbCheck, TbUserPlus } from "react-icons/tb";
+import { TbArrowLeft, TbCheck, TbUserPlus, TbUsersGroup } from "react-icons/tb";
 
 import MemberList from "./MemberList";
 import {
@@ -11,15 +11,22 @@ import {
 } from "../../api/rooms";
 import { getFriendsList } from "../../api/friends";
 import { useProfileOverlay } from "../layout/ProfileOverlayContext";
-
+import {
+  Avatar,
+  ConfirmDialog,
+  EmptyState,
+  IconButton,
+  InlineError,
+  StatusText,
+} from "../ui";
 
 const MembersSidebarRoot = styled.aside`
   width: 260px;
   flex-shrink: 0;
   overflow-y: auto;
-  padding: 16px;
-  border-left: 1px solid var(--color-text);
-  background: var(--color-bg);
+  padding: var(--space-4);
+  border-left: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
 
   @media (max-width: 700px) {
     display: none;
@@ -30,117 +37,46 @@ const SidebarHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-
-  gap: 8px;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
 `;
 
 const MembersTitle = styled.h3`
   margin: 0;
-  color: var(--color-text-muted);
-  font-size: 13px;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-`;
-
-const ToggleButton = styled.button`
-  flex-shrink: 0;
-
-  width: 26px;
-  height: 26px;
-
-  display: grid;
-  place-items: center;
-
-  border: 1px solid var(--color-surface-hover);
-  border-radius: 6px;
-
-  background: transparent;
-  color: var(--color-text-muted);
-
-  cursor: pointer;
-
-  transition:
-    border-color 0.15s ease,
-    color 0.15s ease;
-
-  &:hover {
-    color: var(--color-accent);
-    border-color: var(--color-accent);
-  }
 `;
 
 const FriendRow = styled.div`
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-sm);
+  transition: background var(--dur-fast) var(--ease);
 
-  padding: 6px 2px;
-`;
-
-const FriendAvatar = styled.div`
-  flex-shrink: 0;
-
-  width: 28px;
-  height: 28px;
-
-  border-radius: 50%;
-
-  display: grid;
-  place-items: center;
-
-  font-size: 0.75rem;
-  font-weight: 700;
-
-  color: var(--color-text);
-  background: var(--color-surface-hover);
+  &:hover {
+    background: var(--bg-hover);
+  }
 `;
 
 const FriendName = styled.span`
   flex: 1;
   min-width: 0;
-
-  font-size: 0.9rem;
-  color: var(--color-text);
-
+  color: var(--text-primary);
+  font-size: var(--text-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 `;
 
-const InviteButton = styled.button`
-  flex-shrink: 0;
-
-  width: 26px;
-  height: 26px;
-
-  display: grid;
-  place-items: center;
-
-  border: 1px solid var(--color-surface-hover);
-  border-radius: 6px;
-
-  background: transparent;
-  color: var(--color-text-muted);
-
-  font-size: 0.95rem;
-  line-height: 1;
-
-  cursor: pointer;
-
-  transition:
-    border-color 0.15s ease,
-    color 0.15s ease;
-
-  &:hover:not(:disabled) {
-    color: var(--color-accent);
-    border-color: var(--color-accent);
-  }
-
-  &:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-  }
+const ListArea = styled.div`
+  padding-top: var(--space-3);
 `;
-
 
 function MembersSidebar({ roomId }) {
   const { currentUser } = useProfileOverlay();
@@ -149,11 +85,14 @@ function MembersSidebar({ roomId }) {
   const [loading, setLoading] = useState("loading");
   const [members, setMembers] = useState([]);
   const [kickError, setKickError] = useState(null);
+  const [pendingKick, setPendingKick] = useState(null);
+  const [kicking, setKicking] = useState(false);
 
   const [friendsLoading, setFriendsLoading] = useState("idle");
   const [friends, setFriends] = useState([]);
   const [pendingInviteIds, setPendingInviteIds] = useState(new Set());
   const [invitingId, setInvitingId] = useState(null);
+  const [inviteError, setInviteError] = useState(null);
 
   useEffect(() => {
     const fetchMembers = async () => {
@@ -186,12 +125,13 @@ function MembersSidebar({ roomId }) {
         ]);
 
         setFriends(Array.isArray(friendsData) ? friendsData : []);
-
-        const pendingIds = Array.isArray(pendingInvites)
-          ? pendingInvites.map((invite) => invite.user_id)
-          : [];
-
-        setPendingInviteIds(new Set(pendingIds));
+        setPendingInviteIds(
+          new Set(
+            Array.isArray(pendingInvites)
+              ? pendingInvites.map((invite) => invite.user_id)
+              : [],
+          ),
+        );
         setFriendsLoading("success");
       } catch (error) {
         console.error("Error fetching friends/invites:", error);
@@ -212,28 +152,34 @@ function MembersSidebar({ roomId }) {
   )?.role;
   const canInvite = currentUserRole === "owner" || currentUserRole === "admin";
 
-  const handleKick = async (member) => {
-    if (!window.confirm(`Remove ${member.username} from this room?`)) return;
+  const confirmKick = async () => {
+    if (!pendingKick) return;
 
+    setKicking(true);
     setKickError(null);
     try {
-      await removeMember(roomId, member.id);
-      setMembers((prev) => prev.filter((item) => item.id !== member.id));
+      await removeMember(roomId, pendingKick.id);
+      setMembers((prev) => prev.filter((item) => item.id !== pendingKick.id));
+      setPendingKick(null);
     } catch (error) {
       console.error("Error removing member:", error);
-      setKickError(`Couldn't remove ${member.username}.`);
+      setKickError(`Couldn't remove ${pendingKick.username}.`);
+    } finally {
+      setKicking(false);
     }
   };
 
+  /** The friend joins once they accept the invite from their profile overlay. */
   const handleInvite = async (friend) => {
     setInvitingId(friend.id);
+    setInviteError(null);
 
     try {
       await inviteToRoom(roomId, friend.id);
-
       setPendingInviteIds((prev) => new Set(prev).add(friend.id));
     } catch (error) {
       console.error("Error sending room invite:", error);
+      setInviteError(error?.message || `Couldn't invite ${friend.username}.`);
     } finally {
       setInvitingId(null);
     }
@@ -249,8 +195,9 @@ function MembersSidebar({ roomId }) {
         </MembersTitle>
 
         {(view !== "members" || canInvite) && (
-          <ToggleButton
+          <IconButton
             type="button"
+            $size={26}
             onClick={() =>
               setView(view === "members" ? "friends" : "members")
             }
@@ -259,72 +206,105 @@ function MembersSidebar({ roomId }) {
                 ? "Invite friends"
                 : "Back to members"
             }
+            title={view === "members" ? "Invite friends" : "Back to members"}
           >
             {view === "members" ? (
-              <TbUserPlus size={15} />
+              <TbUserPlus size={18} />
             ) : (
-              <TbArrowLeft size={15} />
+              <TbArrowLeft size={18} />
             )}
-          </ToggleButton>
+          </IconButton>
         )}
       </SidebarHeader>
 
-      {view === "members" ? (
-        <>
-          {loading === "loading" && <p>Loading members...</p>}
-          {loading === "error" && <p>Error loading members.</p>}
-          {kickError && <p role="alert">{kickError}</p>}
-          {loading === "success" && (
-            <MemberList
-              members={members}
-              currentUserId={currentUser?.id}
-              currentUserRole={currentUserRole}
-              onKick={handleKick}
-            />
-          )}
-        </>
-      ) : (
-        <>
-          {friendsLoading === "loading" && <p>Loading friends...</p>}
-          {friendsLoading === "error" && <p>Error loading friends.</p>}
-          {friendsLoading === "success" &&
-            (invitableFriends.length > 0 ? (
-              invitableFriends.map((friend) => {
-                const isPending = pendingInviteIds.has(friend.id);
-                const isInviting = invitingId === friend.id;
+      <ListArea>
+        {view === "members" ? (
+          <>
+            {loading === "loading" && <StatusText>Loading members...</StatusText>}
+            {loading === "error" && <InlineError>Error loading members.</InlineError>}
+            {kickError && !pendingKick && (
+              <InlineError role="alert">{kickError}</InlineError>
+            )}
+            {loading === "success" && (
+              <MemberList
+                members={members}
+                currentUserId={currentUser?.id}
+                currentUserRole={currentUserRole}
+                onKick={setPendingKick}
+              />
+            )}
+          </>
+        ) : (
+          <>
+            {friendsLoading === "loading" && <StatusText>Loading friends...</StatusText>}
+            {friendsLoading === "error" && <InlineError>Error loading friends.</InlineError>}
+            {inviteError && <InlineError role="alert">{inviteError}</InlineError>}
+            {friendsLoading === "success" &&
+              (invitableFriends.length > 0 ? (
+                invitableFriends.map((friend) => {
+                  const invited = pendingInviteIds.has(friend.id);
+                  const isInviting = invitingId === friend.id;
 
-                return (
-                  <FriendRow key={friend.id}>
-                    <FriendAvatar>
-                      {friend.username
-                        ?.charAt(0)
-                        ?.toUpperCase() || "?"}
-                    </FriendAvatar>
+                  return (
+                    <FriendRow key={friend.id}>
+                      <Avatar name={friend.username} $size={28} />
 
-                    <FriendName>
-                      {friend.username}
-                    </FriendName>
+                      <FriendName>{friend.username}</FriendName>
 
-                    <InviteButton
-                      type="button"
-                      onClick={() => handleInvite(friend)}
-                      disabled={isPending || isInviting}
-                      aria-label={
-                        isPending
-                          ? `Invite pending for ${friend.username}`
-                          : `Invite ${friend.username}`
-                      }
-                    >
-                      {isPending ? <TbCheck size={14} /> : "+"}
-                    </InviteButton>
-                  </FriendRow>
-                );
-              })
-            ) : (
-              <p>No friends to invite.</p>
-            ))}
-        </>
-      )}
+                      <IconButton
+                        type="button"
+                        $size={26}
+                        onClick={() => handleInvite(friend)}
+                        disabled={invited || isInviting}
+                        aria-label={
+                          invited
+                            ? `${friend.username} has been invited`
+                            : `Invite ${friend.username} to the room`
+                        }
+                        title={invited ? "Invite sent" : `Invite ${friend.username}`}
+                      >
+                        {invited ? <TbCheck size={16} /> : <TbUserPlus size={16} />}
+                      </IconButton>
+                    </FriendRow>
+                  );
+                })
+              ) : (
+                <EmptyState
+                  icon={TbUsersGroup}
+                  title={
+                    friends.length === 0
+                      ? "No friends yet."
+                      : "Everyone's here"
+                  }
+                  hint={
+                    friends.length === 0
+                      ? "Add friends from their profile to invite them to rooms."
+                      : "All your friends are already in this room."
+                  }
+                />
+              ))}
+          </>
+        )}
+      </ListArea>
+
+      <ConfirmDialog
+        open={Boolean(pendingKick)}
+        title="Remove member?"
+        text={
+          pendingKick
+            ? `Remove ${pendingKick.username} from this room?`
+            : ""
+        }
+        error={kickError}
+        confirmLabel="Remove"
+        busyLabel="Removing..."
+        busy={kicking}
+        onConfirm={confirmKick}
+        onCancel={() => {
+          setPendingKick(null);
+          setKickError(null);
+        }}
+      />
     </MembersSidebarRoot>
   );
 }

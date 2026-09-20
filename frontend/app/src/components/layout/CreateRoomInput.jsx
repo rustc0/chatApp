@@ -1,114 +1,34 @@
 import { useState } from "react";
 import styled from "styled-components";
+import { TbCheck, TbX } from "react-icons/tb";
+import { Button, Input } from "../ui";
 
 const Form = styled.form`
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 8px 0 10px;
+  margin: var(--space-2) 0 10px;
   padding: 6px;
-  border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--color-text) 5%, transparent);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
 
   &:focus-within {
-    border-color: color-mix(
-      in srgb,
-      var(--color-accent) 50%,
-      transparent
-    );
+    border-color: var(--accent-500);
   }
 `;
 
-const Input = styled.input`
+const NameInput = styled(Input)`
   min-width: 0;
   flex: 1;
   height: 34px;
   padding: 0 10px;
-
   border: 0;
-  outline: 0;
-  border-radius: 7px;
-
   background: transparent;
-  color: var(--color-text);
-  font: inherit;
-  font-size: 13px;
-
-  &::placeholder {
-    color: var(--color-text-muted);
-    opacity: 0.7;
-  }
+  font-size: var(--text-sm);
 
   &:focus {
-    background: color-mix(in srgb, var(--color-text) 5%, transparent);
-  }
-`;
-
-const Button = styled.button`
-  flex-shrink: 0;
-  height: 34px;
-  padding: 0 12px;
-
-  border: 0;
-  border-radius: 7px;
-
-  background: var(--color-accent);
-  color: white;
-
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-
-  cursor: pointer;
-  transition:
-    transform 120ms ease,
-    filter 120ms ease,
-    box-shadow 120ms ease;
-
-  &:hover {
-    filter: brightness(1.08);
-    box-shadow: 0 3px 8px
-      color-mix(in srgb, var(--color-accent) 25%, transparent);
-  }
-
-  &:active {
-    transform: translateY(1px);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-  }
-`;
-
-const Cancel = styled.button`
-  flex-shrink: 0;
-  height: 34px;
-  padding: 0 8px;
-
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-
-  color: var(--color-text-muted);
-  font: inherit;
-  font-size: 13px;
-
-  cursor: pointer;
-  transition:
-    color 120ms ease,
-    background 120ms ease;
-
-  &:hover {
-    color: var(--color-text);
-    background: color-mix(in srgb, var(--color-text) 7%, transparent);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
+    box-shadow: none;
   }
 `;
 
@@ -126,7 +46,7 @@ function CreateRoomInput({ onCreate, onCancel }) {
 
   return (
     <Form onSubmit={handleSubmit}>
-      <Input
+      <NameInput
         autoFocus
         placeholder="Room name..."
         value={name}
@@ -135,12 +55,18 @@ function CreateRoomInput({ onCreate, onCancel }) {
         maxLength={50}
       />
 
-      <Cancel type="button" onClick={onCancel}>
-        Cancel
-      </Cancel>
+      <Button
+        type="button"
+        $variant="ghost"
+        $size="sm"
+        onClick={onCancel}
+        title="Cancel"
+      >
+        <TbX size={16} />
+      </Button>
 
-      <Button type="submit" disabled={!name.trim()}>
-        Create
+      <Button type="submit" $size="sm" disabled={!name.trim()} title="Create room">
+        <TbCheck size={16} />
       </Button>
     </Form>
   );

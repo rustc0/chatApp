@@ -1,24 +1,18 @@
+import styled from "styled-components";
+import { TbMessageOff, TbPlugConnectedX } from "react-icons/tb";
 import DmItem from "./DmItem";
 import DmItemSkeleton from "./DmItemSkeleton";
-import styled from "styled-components";
+import { EmptyState } from "../ui";
 
 const DmListRoot = styled.ul`
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 4px;
-  margin: 16px 0 0;
+  gap: var(--space-1);
+  margin: var(--space-4) 0 0;
   padding: 0;
   overflow-y: auto;
   list-style: none;
-`;
-
-const DmListErrorItem = styled.li`
-  display: block;
-  width: auto;
-  text-align: center;
-  font-weight: 700;
-  color: var(--color-text-muted);
 `;
 
 function DmList({ conversations, state }) {
@@ -35,7 +29,27 @@ function DmList({ conversations, state }) {
   if (state === "error") {
     return (
       <DmListRoot>
-        <DmListErrorItem>Failed to load conversations.</DmListErrorItem>
+        <li>
+          <EmptyState
+            icon={TbPlugConnectedX}
+            title="Failed to load conversations."
+            hint="Check your connection and try again."
+          />
+        </li>
+      </DmListRoot>
+    );
+  }
+
+  if (!conversations.length) {
+    return (
+      <DmListRoot>
+        <li>
+          <EmptyState
+            icon={TbMessageOff}
+            title="No conversations yet"
+            hint="Open someone's profile to start a direct message."
+          />
+        </li>
       </DmListRoot>
     );
   }

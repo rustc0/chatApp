@@ -6,7 +6,11 @@
  * envelope ({ "message": "..." }, set by main.py's exception handlers).
  */
 
+import { clearSession } from "./session";
+
 const REFRESH_URL = "/api/users/auth/refresh";
+
+export const LOGOUT_EVENT = "auth:logout";
 
 export class ApiError extends Error {
   constructor(message, status, data) {
@@ -53,6 +57,12 @@ export function jsonBody(payload) {
   };
 }
 
+/** Drops the session locally and tells App to bounce to /auth. */
+export function endSession() {
+  clearSession();
+  window.dispatchEvent(new Event(LOGOUT_EVENT));
+}
+
 let refreshPromise = null;
 
 /** Rotates the access token cookie. Concurrent callers share one request. */
@@ -69,6 +79,13 @@ export function refreshSession() {
           throw new ApiError(errorMessage(data, "Session expired"), response.status, data);
         }
         return parseBody(response);
+      })
+      .catch((error) => {
+        // Only a rejected refresh ends the session; a network blip shouldn't.
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          endSession();
+        }
+        throw error;
       })
       .finally(() => {
         refreshPromise = null;

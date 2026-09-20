@@ -1,10 +1,11 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useState } from "react";
 import { getMe } from "../../api/authentication.js";
 
 const ProfileOverlayContext = createContext();
 
-export function ProfileOverlayProvider({ children }) {
-  const [currentUser, setCurrentUser] = useState(null);
+/** `user` is the signed-in user App already has (from login or /me). */
+export function ProfileOverlayProvider({ user, children }) {
+  const [currentUser, setCurrentUser] = useState(user);
   const [profile, setProfile] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [roomsRefreshTick, setRoomsRefreshTick] = useState(0);
@@ -28,30 +29,6 @@ export function ProfileOverlayProvider({ children }) {
     }
   }
 
-  useEffect(() => {
-    let active = true;
-
-    async function loadCurrentUser() {
-      try {
-        const user = await fetchCurrentUser();
-
-        if (active) {
-          setCurrentUser(user);
-        }
-      } catch (error) {
-        if (active) {
-          console.error("Error fetching user data:", error);
-        }
-      }
-    }
-
-    loadCurrentUser();
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
   async function openProfile() {
     await refreshProfile();
   }
@@ -64,8 +41,8 @@ export function ProfileOverlayProvider({ children }) {
     setRoomsRefreshTick((tick) => tick + 1);
   }
 
-  function openUserPreview(username, anchorRect) {
-    setPreviewUser({ username, anchorRect });
+  function openUserPreview({ id, username }, anchorRect) {
+    setPreviewUser({ id, username, anchorRect });
   }
 
   function closeUserPreview() {

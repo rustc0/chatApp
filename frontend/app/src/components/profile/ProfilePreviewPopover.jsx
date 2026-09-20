@@ -11,8 +11,10 @@ import {
   declineFriendRequest,
   sendFriendRequest,
 } from "../../api/friends";
+import { getCurrentUserId } from "../../api/session";
 import { getOrCreateDm } from "../../api/rooms";
 import { sendMessage } from "../../api/messages";
+import { Avatar, Button, IconButton, Input, riseIn } from "../ui";
 
 const POPOVER_WIDTH = 320;
 const POPOVER_MARGIN = 12;
@@ -61,9 +63,15 @@ export default function ProfilePreviewPopover({ target, onClose }) {
     setError("");
     setUser(null);
 
+    // /by-username embeds friendship_status and friendship_id on the response,
+    // so one call is enough.
+    const isSelf = target.id === getCurrentUserId();
+
     getUserByUsername(target.username)
       .then((data) => {
-        if (!cancelled) setUser(data);
+        if (!cancelled) {
+          setUser(isSelf ? { ...data, friendship_status: "self", friendship_id: null } : data);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err?.message || "Failed to load profile.");
@@ -75,7 +83,7 @@ export default function ProfilePreviewPopover({ target, onClose }) {
     return () => {
       cancelled = true;
     };
-  }, [target.username]);
+  }, [target.id, target.username]);
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -92,7 +100,10 @@ export default function ProfilePreviewPopover({ target, onClose }) {
 
     try {
       await sendFriendRequest(user.id);
-      setUser((u) => ({ ...u, friendship_status: "pending_outgoing" }));
+      // POST /friends/add answers with the status only; re-read the profile so
+      // friendship_id is known and "cancel" works straight away.
+      const refreshed = await getUserByUsername(user.username);
+      setUser((u) => ({ ...u, ...refreshed }));
     } catch (err) {
       setActionError(err?.message || "Failed to send friend request.");
     } finally {
@@ -172,7 +183,14 @@ export default function ProfilePreviewPopover({ target, onClose }) {
       >
         <Banner />
 
-        <CloseButton onClick={onClose} aria-label="Close">
+        <CloseButton
+          type="button"
+          $size={26}
+          $round
+          onClick={onClose}
+          aria-label="Close"
+          title="Close"
+        >
           <TbX size={16} />
         </CloseButton>
 
@@ -182,15 +200,11 @@ export default function ProfilePreviewPopover({ target, onClose }) {
         {user && (
           <>
             <AvatarWrap>
-              <AvatarCircle>
-                {avatarLoading ? null : avatarUrl ? (
-                  <AvatarImage src={avatarUrl} alt="" />
-                ) : (
-                  <AvatarFallback>
-                    {(user.display_name || user.username)?.charAt(0)?.toUpperCase() || "?"}
-                  </AvatarFallback>
-                )}
-              </AvatarCircle>
+              <Avatar
+                src={avatarLoading ? null : avatarUrl}
+                name={user.display_name || user.username}
+                $size={64}
+              />
             </AvatarWrap>
 
             <Content>
@@ -205,7 +219,13 @@ export default function ProfilePreviewPopover({ target, onClose }) {
 
               {user.friendship_status === "none" && (
                 <ActionRow>
-                  <PrimaryButton type="button" onClick={handleAddFriend} disabled={runningAction}>
+                  <PrimaryButton
+                    type="button"
+                    $pill
+                    $size="sm"
+                    onClick={handleAddFriend}
+                    disabled={runningAction}
+                  >
                     <TbUserPlus size={16} />
                     Add Friend
                   </PrimaryButton>
@@ -214,37 +234,47 @@ export default function ProfilePreviewPopover({ target, onClose }) {
 
               {user.friendship_status === "pending_outgoing" && (
                 <ActionRow>
-                  <DisabledPill type="button" disabled>
+                  <DisabledPill type="button" $variant="secondary" $pill $size="sm" disabled>
                     <TbUserCheck size={16} />
                     Request Sent
                   </DisabledPill>
 
-                  <IconButton
+                  <RoundIconButton
                     type="button"
+                    $size={34}
                     onClick={handleCancelRequest}
                     disabled={runningAction}
                     aria-label="Cancel friend request"
+                    title="Cancel friend request"
                   >
                     <TbX size={16} />
-                  </IconButton>
+                  </RoundIconButton>
                 </ActionRow>
               )}
 
               {user.friendship_status === "pending_incoming" && (
                 <ActionRow>
-                  <PrimaryButton type="button" onClick={handleAccept} disabled={runningAction}>
+                  <PrimaryButton
+                    type="button"
+                    $pill
+                    $size="sm"
+                    onClick={handleAccept}
+                    disabled={runningAction}
+                  >
                     <TbCheck size={16} />
                     Accept
                   </PrimaryButton>
 
-                  <IconButton
+                  <RoundIconButton
                     type="button"
+                    $size={34}
                     onClick={handleDecline}
                     disabled={runningAction}
                     aria-label="Decline friend request"
+                    title="Decline friend request"
                   >
                     <TbX size={16} />
-                  </IconButton>
+                  </RoundIconButton>
                 </ActionRow>
               )}
 
@@ -257,7 +287,13 @@ export default function ProfilePreviewPopover({ target, onClose }) {
                     disabled={sending}
                   />
 
-                  <SendButton type="submit" disabled={sending || !messageDraft.trim()} aria-label="Send message">
+                  <SendButton
+                    type="submit"
+                    $size="sm"
+                    disabled={sending || !messageDraft.trim()}
+                    aria-label="Send message"
+                    title="Send message"
+                  >
                     <TbSend size={16} />
                   </SendButton>
                 </MessageForm>
@@ -270,6 +306,7 @@ export default function ProfilePreviewPopover({ target, onClose }) {
   );
 }
 
+
 // =============================================================================
 // Styles
 // =============================================================================
@@ -277,301 +314,131 @@ export default function ProfilePreviewPopover({ target, onClose }) {
 const Backdrop = styled.div`
   position: fixed;
   inset: 0;
-
   z-index: 9998;
 `;
 
 const Card = styled.div`
   position: fixed;
-
   width: ${POPOVER_WIDTH}px;
-
-  background: var(--color-bg);
-
-  border: 1px solid var(--color-surface-hover);
-  border-radius: 14px;
-
   overflow: hidden;
-
-  color: var(--color-text);
-
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
-
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-lg);
+  animation: ${riseIn} var(--dur) var(--ease);
   z-index: 9999;
 `;
 
 const Banner = styled.div`
   height: 72px;
-
-  background: color-mix(in srgb, var(--color-bg) 75%, black);
-
-  border-bottom: 1px solid var(--color-surface-hover);
+  border-bottom: 1px solid var(--border-subtle);
+  background: linear-gradient(
+    135deg,
+    var(--accent-600),
+    color-mix(in srgb, var(--accent-600) 35%, var(--bg-base))
+  );
 `;
 
-const CloseButton = styled.button`
+const CloseButton = styled(IconButton)`
   position: absolute;
-
-  top: 8px;
-  right: 8px;
-
-  width: 26px;
-  height: 26px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
+  top: var(--space-2);
+  right: var(--space-2);
+  border-color: var(--border-strong);
   background: rgba(0, 0, 0, 0.35);
-
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 50%;
-
   color: #fff;
 
-  cursor: pointer;
-
-  &:hover {
+  &:hover:not(:disabled) {
     background: rgba(0, 0, 0, 0.55);
+    color: #fff;
   }
 `;
 
 const StatusText = styled.p`
   margin: 0;
-  padding: 1rem;
-
-  font-size: 0.85rem;
-
-  color: ${({ $error }) => ($error ? "var(--color-danger, #e5484d)" : "var(--color-text-muted)")};
+  padding: var(--space-4);
+  font-size: var(--text-sm);
+  color: ${({ $error }) => ($error ? "var(--danger)" : "var(--text-secondary)")};
 `;
 
 const AvatarWrap = styled.div`
   margin-top: -32px;
-  margin-left: 16px;
-`;
-
-const AvatarCircle = styled.div`
-  position: relative;
-
-  width: 64px;
-  height: 64px;
-
-  border: 4px solid var(--color-bg);
+  margin-left: var(--space-4);
+  width: fit-content;
+  border: 4px solid var(--bg-elevated);
   border-radius: 50%;
-
-  overflow: hidden;
-
-  background: var(--color-surface-hover);
-`;
-
-const AvatarImage = styled.img`
-  position: absolute;
-  inset: 0;
-
-  width: 100%;
-  height: 100%;
-
-  object-fit: cover;
-`;
-
-const AvatarFallback = styled.span`
-  position: absolute;
-  inset: 0;
-
-  display: grid;
-  place-items: center;
-
-  font-size: 1.35rem;
-  font-weight: 700;
-
-  color: var(--color-text-muted);
 `;
 
 const Content = styled.div`
-  padding: 8px 16px 16px;
+  padding: var(--space-2) var(--space-4) var(--space-4);
 `;
 
 const DisplayName = styled.h3`
   margin: 0;
-
-  font-size: 1.05rem;
+  color: var(--text-primary);
+  font-size: var(--text-lg);
 `;
 
 const Handle = styled.span`
   display: block;
-
   margin-top: 2px;
-
-  font-size: 0.85rem;
-
-  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
 `;
 
 const Divider = styled.div`
   margin: 10px 0;
-
-  border-top: 1px solid var(--color-surface-hover);
+  border-top: 1px solid var(--border-subtle);
 `;
 
 const Bio = styled.p`
   margin: 0;
-
-  font-size: 0.88rem;
-  line-height: 1.45;
-
-  color: var(--color-text);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
 `;
 
 const ActionErrorText = styled.p`
   margin: 10px 0 0;
-
-  font-size: 0.8rem;
-
-  color: var(--color-danger, #e5484d);
+  font-size: var(--text-sm);
+  color: var(--danger);
 `;
 
 const ActionRow = styled.div`
   display: flex;
-
   align-items: center;
-
-  gap: 8px;
-
-  margin-top: 14px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 `;
 
-const PrimaryButton = styled.button`
+const PrimaryButton = styled(Button)`
   flex: 1;
-
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  gap: 6px;
-
-  border: 1px solid var(--color-accent);
-  border-radius: 999px;
-
-  background: var(--color-accent);
-
-  color: #fff;
-
-  padding: 0.5rem 0.9rem;
-
-  font-weight: 600;
-
-  cursor: pointer;
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 `;
 
-const DisabledPill = styled.button`
+const DisabledPill = styled(Button)`
   flex: 1;
-
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  gap: 6px;
-
-  border: 1px solid var(--color-surface-hover);
-  border-radius: 999px;
-
-  background: transparent;
-
-  color: var(--color-text-muted);
-
-  padding: 0.5rem 0.9rem;
-
-  font-weight: 600;
-
-  cursor: not-allowed;
 `;
 
-const IconButton = styled.button`
-  flex-shrink: 0;
-
-  width: 34px;
-  height: 34px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  border: 1px solid var(--color-surface-hover);
+const RoundIconButton = styled(IconButton)`
+  border-color: var(--border-strong);
   border-radius: 50%;
-
-  background: transparent;
-
-  color: var(--color-text-muted);
-
-  cursor: pointer;
-
-  &:hover:not(:disabled) {
-    color: var(--color-accent);
-    border-color: var(--color-accent);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 `;
 
 const MessageForm = styled.form`
   display: flex;
-
-  gap: 8px;
-
-  margin-top: 14px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 `;
 
-const MessageInput = styled.input`
+const MessageInput = styled(Input)`
   flex: 1;
   min-width: 0;
-
-  background: var(--color-surface, transparent);
-
-  border: 1px solid var(--color-surface-hover);
-  border-radius: 8px;
-
-  color: var(--color-text);
-
-  padding: 8px 10px;
-
-  font-family: inherit;
-  font-size: 0.85rem;
-
-  outline: none;
-
-  &:focus {
-    border-color: var(--color-accent);
-  }
+  padding: var(--space-2) 10px;
+  font-size: var(--text-sm);
 `;
 
-const SendButton = styled.button`
+const SendButton = styled(Button)`
   flex-shrink: 0;
-
   width: 36px;
-  height: 36px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  border: none;
-  border-radius: 8px;
-
-  background: var(--color-accent);
-
-  color: #fff;
-
-  cursor: pointer;
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+  padding: 0;
 `;
